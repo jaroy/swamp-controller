@@ -17,5 +17,24 @@ class ZoneState:
 class DeviceState:
     """Complete SWAMP device state"""
     zones: dict[tuple[int, int], ZoneState] = field(default_factory=dict)
-    connected: bool = False
-    last_update: datetime | None = None
+    socket_connected: bool = False
+    conn_accepted_sent: bool = False
+    last_message_received: datetime | None = None
+    client_address: str | None = None
+
+    @property
+    def connected(self) -> bool:
+        """Device is considered connected if:
+        - Socket is connected
+        - CONN_ACCEPTED was sent
+        - Message received in last 30 seconds
+        """
+        if not self.socket_connected or not self.conn_accepted_sent:
+            return False
+
+        if self.last_message_received is None:
+            return False
+
+        # Check if message received in last 30 seconds
+        time_since_last = (datetime.now() - self.last_message_received).total_seconds()
+        return time_since_last <= 30

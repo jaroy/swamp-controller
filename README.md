@@ -43,6 +43,29 @@ targets:
         zone: 1
 ```
 
+### On the SWAMP
+We have to tell the SWAMP to connect to us instead of a Crestron processor.
+Use these TELNET commands:
+```
+adds 51 <IP address> 4 <port>
+reboot
+```
+
+Note that you can see the currently configured controller with the `ipt` command:
+```
+$ telnet 192.168.1.89
+Trying 192.168.1.89...
+Connected to 192.168.1.89.
+Escape character is '^]'.
+
+SWAMP Control Console
+Connected to Host: SWAMP-00107FE7C4CD
+
+SWAMP>ipt
+CIP_ID  Type    Status     DevID  Port   IP Address/SiteName
+    51  GWAY    ONLINE        4   41794  010.194.005.251
+```
+
 ## Usage
 
 Start the controller:
@@ -84,15 +107,26 @@ Example: `volume office +10` or `volume office -5`
 
 ### Power control
 ```
-power <target-id> on|off
+power <target-id> on <source-id>
+power <target-id> off
 ```
-Example: `power office on`
+Power on requires a source (zones need a source to be "on"). Power off sets the source to 0.
+
+Examples:
+- `power office on music-a` - Power on office with music-a as source
+- `power office off` - Power off office
 
 ### Show status
 ```
 status [target-id]
 ```
 Example: `status office` or `status` (shows all)
+
+### Send WHOIS request
+```
+whois
+```
+Sends a WHOIS request (0f 00 01 02) to the connected SWAMP device. This is automatically sent when a device connects.
 
 ### List sources or targets
 ```
@@ -134,15 +168,45 @@ TCP Server (asyncio)
 
 ## Protocol Implementation
 
-The protocol handler is currently a stub that raises `NotImplementedError`. To implement the actual SWAMP protocol:
+The protocol handler has partial implementation:
 
-1. Edit `swamp/protocol/swamp_protocol.py`
-2. Implement the encoding methods:
-   - `encode_route_command()`
-   - `encode_volume_command()`
-   - `encode_power_command()`
-   - `decode_message()`
-   - `encode_query_state()`
+### Message Format
+All SWAMP messages follow this format:
+- **Byte 0**: Message type
+- **Bytes 1-2**: Remaining length (total bytes - 3) in big-endian
+- **Bytes 3+**: Payload
+
+Example: `0a 00 0a 00 51 a3 42 40 02 00 00 00 00`
+- Type: `0x0a` (CLIENT_SIGNON)
+- Length: `0x00 0x0a` = 10 bytes remaining
+- Payload: `00 51 a3 42 40 02 00 00 00 00` (10 bytes)
+- Total: 1 + 2 + 10 = 13 bytes
+
+### Implemented Messages
+- **WHOIS** (`0f 00 01 02`) - Sent automatically when client connects, also available via `whois` command
+- **PING** (`0d 00 02 00 00`) - Automatically detected and triggers PONG response
+- **PONG** (`0e 00 02 00 00`) - Sent automatically in response to PING
+- **CLIENT_SIGNON** (`0a ...`) - Sent by device on connect, triggers CONN_ACCEPTED response
+- **CONN_ACCEPTED** (`02 00 04 00 00 00 03`) - Sent automatically in response to CLIENT_SIGNON
+
+### Unknown Message Handling
+Any message not recognized will be printed to the console in hex format, making it easy to discover and implement new message types.
+
+Example output:
+```
+Unknown message type ff (4 bytes): ff aa bb cc
+Recognized but unimplemented message type 0a (13 bytes): 0a 00 0a 00 51 a3 42 40 02 00 00 00 00
+```
+
+### Adding New Message Types
+To add support for a new message type, edit `swamp/protocol/swamp_protocol.py`:
+
+1. Add the message type to `decode_message()` dispatcher
+2. Create a `_decode_message_type_XX()` method
+3. Implement encoding methods if needed:
+   - `encode_route_command()` - Route audio source to zone
+   - `encode_volume_command()` - Set zone volume
+   - `encode_power_command()` - Control zone power
 
 ## Development
 
@@ -151,9 +215,16 @@ Run tests:
 pytest
 ```
 
+The test suite uses dynamic port allocation (via `get_free_port()`) to avoid conflicts with running instances of the controller.
+
 Enable debug logging:
 ```bash
 python -m swamp --log-level DEBUG
+```
+
+Run on a different port:
+```bash
+python -m swamp --port 41795
 ```
 
 ## Project Structure

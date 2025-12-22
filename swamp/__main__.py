@@ -63,6 +63,7 @@ async def main_async():
     cmd_parser.register('volume', handlers.cmd_volume)
     cmd_parser.register('power', handlers.cmd_power)
     cmd_parser.register('status', handlers.cmd_status)
+    cmd_parser.register('whois', handlers.cmd_whois)
     cmd_parser.register('list', handlers.cmd_list)
     cmd_parser.register('help', handlers.cmd_help)
 

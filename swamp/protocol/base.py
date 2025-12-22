@@ -28,3 +28,18 @@ class ProtocolHandler(ABC):
     async def encode_query_state(self, unit: int) -> bytes:
         """Request full state from device"""
         pass
+
+    @abstractmethod
+    async def encode_whois(self) -> bytes:
+        """Encode WHOIS request"""
+        pass
+
+    @abstractmethod
+    async def encode_pong(self) -> bytes:
+        """Encode PONG response"""
+        pass
+
+    @abstractmethod
+    async def encode_conn_accepted(self) -> bytes:
+        """Encode CONN_ACCEPTED response"""
+        pass

@@ -42,11 +42,24 @@ class SwampController:
 
             zone_state.volume = level
 
-    async def set_power(self, target_id: str, power_on: bool) -> None:
-        """Set power for target"""
+    async def set_power(self, target_id: str, power_on: bool, source_id: str | None = None) -> None:
+        """Set power for target (really just routes source to zone)
+
+        Power on requires a source_id. Power off sets source to 0.
+        """
         zones = self.state.get_zones_for_target(target_id)
 
-        logger.info(f"Setting {target_id} power to {'on' if power_on else 'off'} ({len(zones)} zones)")
+        if power_on:
+            if not source_id:
+                raise ValueError("Power on requires a source_id")
+            # Power on = route source to zone
+            source = self.state.get_source_by_id(source_id)
+            swamp_source_id = source.swamp_source_id
+            logger.info(f"Powering on {target_id} with source {source_id} ({len(zones)} zones)")
+        else:
+            # Power off = route source 0 (no source) to zone
+            swamp_source_id = 0
+            logger.info(f"Powering off {target_id} ({len(zones)} zones)")
 
         for zone_state in zones:
             command_bytes = await self.tcp.protocol.encode_power_command(
@@ -55,11 +68,30 @@ class SwampController:
             await self.tcp.send_command(command_bytes)
 
             zone_state.power = power_on
+            zone_state.source_id = swamp_source_id if power_on else None
+
+    async def send_whois(self) -> None:
+        """Send WHOIS request to connected device"""
+        logger.info("Sending WHOIS request")
+        whois_bytes = await self.tcp.protocol.encode_whois()
+        await self.tcp.send_command(whois_bytes)
 
     async def get_status(self) -> dict:
         """Get current system status"""
+        state = self.state.state
+
+        # Calculate time since last message
+        time_since_last = None
+        if state.last_message_received:
+            from datetime import datetime
+            time_since_last = (datetime.now() - state.last_message_received).total_seconds()
+
         return {
-            'connected': self.state.state.connected,
+            'connected': state.connected,
+            'socket_connected': state.socket_connected,
+            'conn_accepted_sent': state.conn_accepted_sent,
+            'client_address': state.client_address,
+            'last_message_seconds': time_since_last,
             'targets': [
                 {
                     'id': target.id,

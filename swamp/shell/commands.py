@@ -46,9 +46,9 @@ class CommandHandlers:
             return f"Error: {e}"
 
     async def cmd_power(self, args: list[str], kwargs: dict) -> str:
-        """power <target> on|off"""
+        """power <target> on <source> | power <target> off"""
         if len(args) < 2:
-            return "Usage: power <target-id> on|off"
+            return "Usage: power <target-id> on <source-id> | power <target-id> off"
 
         target_id = args[0]
         power_state = args[1].lower()
@@ -57,9 +57,17 @@ class CommandHandlers:
             return "Error: Power state must be 'on' or 'off'"
 
         try:
-            power_on = power_state == 'on'
-            await self.controller.set_power(target_id, power_on)
-            return f"Turned {target_id} {'on' if power_on else 'off'}"
+            if power_state == 'on':
+                # Power on requires a source
+                if len(args) < 3:
+                    return "Usage: power <target-id> on <source-id>"
+                source_id = args[2]
+                await self.controller.set_power(target_id, True, source_id)
+                return f"Turned {target_id} on with source {source_id}"
+            else:
+                # Power off sets source to 0 (no source)
+                await self.controller.set_power(target_id, False, None)
+                return f"Turned {target_id} off"
         except Exception as e:
             return f"Error: {e}"
 
@@ -68,7 +76,24 @@ class CommandHandlers:
         try:
             status = await self.controller.get_status()
             output = []
-            output.append(f"Connection: {'Connected' if status['connected'] else 'Disconnected'}")
+
+            # Connection status
+            if status['connected']:
+                output.append("Connection: Connected")
+                if status['client_address']:
+                    output.append(f"  Client: {status['client_address']}")
+                if status['last_message_seconds'] is not None:
+                    output.append(f"  Last message: {status['last_message_seconds']:.1f}s ago")
+            else:
+                output.append("Connection: Disconnected")
+                if status['socket_connected']:
+                    output.append("  Socket: Connected")
+                if status['conn_accepted_sent']:
+                    output.append("  Handshake: Complete")
+                if status['last_message_seconds'] is not None:
+                    output.append(f"  Last message: {status['last_message_seconds']:.1f}s ago (stale)")
+                else:
+                    output.append("  Last message: Never")
             output.append("")
 
             if args:
@@ -88,6 +113,16 @@ class CommandHandlers:
                 output.append("")
 
             return "\n".join(output)
+        except Exception as e:
+            return f"Error: {e}"
+
+    async def cmd_whois(self, args: list[str], kwargs: dict) -> str:
+        """Send WHOIS request to connected device"""
+        try:
+            await self.controller.send_whois()
+            return "WHOIS request sent"
+        except ConnectionError as e:
+            return f"Error: {e}"
         except Exception as e:
             return f"Error: {e}"
 
@@ -118,12 +153,14 @@ class CommandHandlers:
         """Show help"""
         return """
 Available commands:
-  route <source> <target>  - Route audio source to target zone
-  volume <target> <level>  - Set volume (0-100)
-  volume <target> +/-<N>   - Adjust volume relatively
-  power <target> on|off    - Control power
-  status [target]          - Show status
-  list sources|targets     - List available sources/targets
-  help                     - Show this help
-  quit                     - Exit
+  route <source> <target>      - Route audio source to target zone
+  volume <target> <level>      - Set volume (0-100)
+  volume <target> +/-<N>       - Adjust volume relatively
+  power <target> on <source>   - Power on with source
+  power <target> off           - Power off (sets source to 0)
+  status [target]              - Show status
+  whois                        - Send WHOIS request to device
+  list sources|targets         - List available sources/targets
+  help                         - Show this help
+  quit                         - Exit
 """

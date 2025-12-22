@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from datetime import datetime
 
 
 logger = logging.getLogger(__name__)
@@ -28,13 +29,48 @@ class SwampTcpServer:
         async with self.server:
             await self.server.serve_forever()
 
+    async def _periodic_ping(self, writer: asyncio.StreamWriter):
+        """Send PING every 10 seconds"""
+        try:
+            while True:
+                await asyncio.sleep(10)
+                if self.state_manager.state.socket_connected:
+                    try:
+                        ping_bytes = await self.protocol.encode_pong()  # PONG structure is same as PING
+                        # Actually encode PING (0x0d)
+                        ping_bytes = bytes([0x0d, 0x00, 0x02, 0x00, 0x00])
+                        writer.write(ping_bytes)
+                        await writer.drain()
+                        logger.debug('Sent periodic PING')
+                    except Exception as e:
+                        logger.error(f'Error sending periodic PING: {e}')
+                        break
+        except asyncio.CancelledError:
+            logger.debug('Periodic PING task cancelled')
+
     async def handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         """Handle incoming SWAMP device connection"""
         self.client_address = writer.get_extra_info('peername')
         logger.info(f'SWAMP device connected from {self.client_address}')
 
         self.client_writer = writer
-        self.state_manager.state.connected = True
+
+        # Update state
+        self.state_manager.state.socket_connected = True
+        self.state_manager.state.client_address = str(self.client_address)
+        self.state_manager.state.conn_accepted_sent = False
+
+        # Send WHOIS automatically on connection
+        try:
+            whois_bytes = await self.protocol.encode_whois()
+            writer.write(whois_bytes)
+            await writer.drain()
+            logger.info(f'Sent WHOIS to {self.client_address}')
+        except Exception as e:
+            logger.error(f'Error sending WHOIS: {e}')
+
+        # Start periodic PING task
+        ping_task = asyncio.create_task(self._periodic_ping(writer))
 
         try:
             while True:
@@ -45,19 +81,70 @@ class SwampTcpServer:
 
                 logger.debug(f'Received {len(data)} bytes from SWAMP')
 
+                # Update last message received time
+                self.state_manager.state.last_message_received = datetime.now()
+
                 try:
                     message = await self.protocol.decode_message(data)
                     if message:
-                        await self.state_manager.update_from_device(message)
+                        msg_type = message.get('type')
+
+                        # Handle PING with automatic PONG response
+                        if msg_type == 'ping':
+                            logger.debug('Received PING, sending PONG')
+                            pong_bytes = await self.protocol.encode_pong()
+                            writer.write(pong_bytes)
+                            await writer.drain()
+                        # Handle CLIENT_SIGNON with automatic CONN_ACCEPTED response
+                        elif msg_type == 'client_signon':
+                            logger.info(f'Received CLIENT_SIGNON: {message.get("payload")}')
+                            conn_accepted_bytes = await self.protocol.encode_conn_accepted()
+                            writer.write(conn_accepted_bytes)
+                            await writer.drain()
+                            self.state_manager.state.conn_accepted_sent = True
+                            logger.info('Sent CONN_ACCEPTED - connection established')
+
+                            # Send JOIN UPDATE 100ms later
+                            await asyncio.sleep(0.1)
+                            join_update_bytes = await self.protocol.encode_join_update()
+                            writer.write(join_update_bytes)
+                            await writer.drain()
+                            logger.info('Sent JOIN UPDATE')
+                        # Handle recognized but not-yet-implemented message types
+                        elif msg_type and msg_type.startswith('unknown_'):
+                            hex_str = ' '.join(f'{b:02x}' for b in data)
+                            print(f'Recognized but unimplemented message type {data[0]:02x} ({len(data)} bytes): {hex_str}')
+                            logger.info(f'Message type {data[0]:02x}: {hex_str}')
+                        else:
+                            # Update state for other messages
+                            await self.state_manager.update_from_device(message)
+                    else:
+                        # Message not recognized at all - print raw bytes
+                        hex_str = ' '.join(f'{b:02x}' for b in data)
+                        print(f'Unknown message type {data[0]:02x} ({len(data)} bytes): {hex_str}')
+                        logger.warning(f'Unknown message type {data[0]:02x}: {hex_str}')
                 except Exception as e:
-                    logger.error(f'Error decoding message: {e}')
+                    # Error during decoding - print raw bytes
+                    hex_str = ' '.join(f'{b:02x}' for b in data)
+                    print(f'Failed to decode message ({len(data)} bytes): {hex_str}')
+                    logger.error(f'Error decoding message: {e} - Raw data: {hex_str}')
 
         except asyncio.CancelledError:
             logger.info('Connection handler cancelled')
         except Exception as e:
             logger.error(f'Error in connection handler: {e}')
         finally:
-            self.state_manager.state.connected = False
+            # Cancel periodic PING
+            ping_task.cancel()
+            try:
+                await ping_task
+            except asyncio.CancelledError:
+                pass
+
+            # Reset connection state
+            self.state_manager.state.socket_connected = False
+            self.state_manager.state.conn_accepted_sent = False
+            self.state_manager.state.client_address = None
             self.client_writer = None
             self.client_address = None
             writer.close()

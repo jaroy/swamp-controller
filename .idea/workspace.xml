@@ -2,13 +2,24 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="cfab4d4e-1e86-467a-8148-a96b9acfb9ae" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/profiles_settings.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/modules.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/swamp-controller.iml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/config/config.yaml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/README.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/test_client_signon.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/test_connection_status.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/test_handshake.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/test_helpers.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/test_integration.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/test_join_update.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/pyproject.toml" beforeDir="false" afterPath="$PROJECT_DIR$/pyproject.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/requirements.txt" beforeDir="false" afterPath="$PROJECT_DIR$/requirements.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/swamp/__main__.py" beforeDir="false" afterPath="$PROJECT_DIR$/swamp/__main__.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/swamp/core/controller.py" beforeDir="false" afterPath="$PROJECT_DIR$/swamp/core/controller.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/swamp/models/state.py" beforeDir="false" afterPath="$PROJECT_DIR$/swamp/models/state.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/swamp/network/tcp_server.py" beforeDir="false" afterPath="$PROJECT_DIR$/swamp/network/tcp_server.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/swamp/protocol/base.py" beforeDir="false" afterPath="$PROJECT_DIR$/swamp/protocol/base.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/swamp/protocol/swamp_protocol.py" beforeDir="false" afterPath="$PROJECT_DIR$/swamp/protocol/swamp_protocol.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/swamp/shell/commands.py" beforeDir="false" afterPath="$PROJECT_DIR$/swamp/shell/commands.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -29,6 +40,8 @@
   <component name="PropertiesComponent"><![CDATA[{
   "keyToString": {
     "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "Python.SWAMP Controller.executor": "Run",
+    "Python.__main__.executor": "Run",
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
     "RunOnceActivity.git.unshallow": "true",
@@ -36,9 +49,41 @@
     "ai.playground.ignore.import.keys.banner.in.settings": "true",
     "git-widget-placeholder": "master",
     "nodejs_package_manager_path": "npm",
+    "settings.editor.selected.configurable": "preferences.keymap",
     "vue.rearranger.settings.migration": "true"
   }
 }]]></component>
+  <component name="RunManager">
+    <configuration name="SWAMP Controller" type="PythonConfigurationType" factoryName="Python" temporary="true">
+      <module name="swamp-controller" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+      <option name="RUN_TOOL" value="" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/swamp/__main__.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <recent_temporary>
+      <list>
+        <item itemvalue="Python.SWAMP Controller" />
+      </list>
+    </recent_temporary>
+  </component>
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
@@ -54,11 +99,14 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1766364028881</updated>
-      <workItem from="1766364029904" duration="1948000" />
+      <workItem from="1766364029904" duration="6258000" />
     </task>
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="3" />
+  </component>
+  <component name="com.intellij.coverage.CoverageDataManagerImpl">
+    <SUITE FILE_PATH="coverage/swamp_controller$__main__.coverage" NAME="SWAMP Controller Coverage Results" MODIFIED="1766369943692" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
   </component>
 </project>
