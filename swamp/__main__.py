@@ -81,12 +81,29 @@ async def main_async():
         logger.info('Interrupted by user')
     finally:
         logger.info('Shutting down')
+        # Close any active client connections first
+        if tcp_server.client_writer and not tcp_server.client_writer.is_closing():
+            try:
+                tcp_server.client_writer.close()
+                await asyncio.wait_for(
+                    tcp_server.client_writer.wait_closed(),
+                    timeout=1.0
+                )
+            except asyncio.TimeoutError:
+                logger.warning('Timeout waiting for client connection to close')
+            except Exception as e:
+                logger.debug(f'Error closing client connection: {e}')
+
+        # Cancel server task (the async with context will close the server)
         server_task.cancel()
         try:
-            await server_task
+            await asyncio.wait_for(server_task, timeout=2.0)
         except asyncio.CancelledError:
-            pass
-        await tcp_server.close()
+            logger.debug('Server task cancelled successfully')
+        except asyncio.TimeoutError:
+            logger.warning('Timeout waiting for server to close')
+        except Exception as e:
+            logger.debug(f'Error during server shutdown: {e}')
 
     return 0
 

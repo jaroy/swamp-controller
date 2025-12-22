@@ -16,6 +16,7 @@ class SwampTcpServer:
         self.server = None
         self.client_writer = None
         self.client_address = None
+        self.client_handler_task = None
 
     async def start(self):
         """Start TCP server listening on port"""
@@ -26,8 +27,12 @@ class SwampTcpServer:
         addrs = ', '.join(str(sock.getsockname()) for sock in self.server.sockets)
         logger.info(f'TCP server listening on {addrs}')
 
-        async with self.server:
-            await self.server.serve_forever()
+        try:
+            async with self.server:
+                await self.server.serve_forever()
+        except asyncio.CancelledError:
+            logger.info('Server task cancelled, shutting down')
+            raise
 
     async def _periodic_ping(self, writer: asyncio.StreamWriter):
         """Send PING every 10 seconds"""
@@ -165,6 +170,15 @@ class SwampTcpServer:
 
     async def close(self):
         """Close the server"""
+        # Close any active client connection
+        if self.client_writer:
+            try:
+                self.client_writer.close()
+                await self.client_writer.wait_closed()
+            except Exception as e:
+                logger.debug(f'Error closing client connection: {e}')
+
+        # Close the server
         if self.server:
             self.server.close()
             await self.server.wait_closed()
