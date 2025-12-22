@@ -24,3 +24,7 @@ testpaths = ["tests"]
 
 [project.scripts]
 swamp = "swamp.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["swamp*"]
+exclude = ["tests*", "config*", "custom_components*"]

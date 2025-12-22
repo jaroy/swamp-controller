@@ -4,15 +4,6 @@
     <list default="true" id="cfab4d4e-1e86-467a-8148-a96b9acfb9ae" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/HOMEASSISTANT.md" beforeDir="false" afterPath="$PROJECT_DIR$/HOMEASSISTANT.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/custom_components/swamp_controller/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/custom_components/swamp_controller/__init__.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/custom_components/swamp_controller/config_flow.py" beforeDir="false" afterPath="$PROJECT_DIR$/custom_components/swamp_controller/config_flow.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/custom_components/swamp_controller/const.py" beforeDir="false" afterPath="$PROJECT_DIR$/custom_components/swamp_controller/const.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/custom_components/swamp_controller/manifest.json" beforeDir="false" afterPath="$PROJECT_DIR$/custom_components/swamp_controller/manifest.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/swamp/core/config_manager.py" beforeDir="false" afterPath="$PROJECT_DIR$/swamp/core/config_manager.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/swamp/core/controller.py" beforeDir="false" afterPath="$PROJECT_DIR$/swamp/core/controller.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/swamp/core/state_manager.py" beforeDir="false" afterPath="$PROJECT_DIR$/swamp/core/state_manager.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/swamp/protocol/swamp_protocol.py" beforeDir="false" afterPath="$PROJECT_DIR$/swamp/protocol/swamp_protocol.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />

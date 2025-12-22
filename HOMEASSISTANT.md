@@ -65,11 +65,37 @@ pip install -e .
 
 **For Home Assistant OS/Supervised:**
 
-Installation requires SSH access to the host and the Advanced SSH add-on:
+Home Assistant OS runs everything in Docker containers, so you need to access the Home Assistant Core container:
+
 ```bash
-# These systems don't easily support custom Python packages
-# Consider using Home Assistant Core or Container instead
+# 1. Install the "Advanced SSH & Web Terminal" add-on from the Add-on Store
+# 2. In the add-on configuration, enable "Protection mode: OFF"
+# 3. Start the add-on and access the terminal
+
+# 4. Access the homeassistant container
+docker exec -it homeassistant /bin/bash
+
+# 5. Once inside the container, the Python environment is already active
+# You can verify with:
+which python3
+# Should show: /usr/local/bin/python3
+
+# 6. Install the swamp package
+cd /tmp
+apk add --no-cache git  # Install git if not present
+git clone https://github.com/jaroy/swamp-controller.git
+cd swamp-controller
+pip install -e .
+
+# 7. Exit the container
+exit
 ```
+
+**Important Notes for HAOS:**
+- The installation will persist across Home Assistant restarts
+- It will NOT persist across OS updates or container rebuilds
+- You'll need to reinstall after major Home Assistant updates
+- Consider creating a startup automation to reinstall the package if needed
 
 ### Step 2: Copy Integration Files
 
