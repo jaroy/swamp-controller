@@ -3,7 +3,16 @@
   <component name="ChangeListManager">
     <list default="true" id="cfab4d4e-1e86-467a-8148-a96b9acfb9ae" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/HOMEASSISTANT.md" beforeDir="false" afterPath="$PROJECT_DIR$/HOMEASSISTANT.md" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/custom_components/swamp_controller/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/custom_components/swamp_controller/__init__.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/custom_components/swamp_controller/config_flow.py" beforeDir="false" afterPath="$PROJECT_DIR$/custom_components/swamp_controller/config_flow.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/custom_components/swamp_controller/const.py" beforeDir="false" afterPath="$PROJECT_DIR$/custom_components/swamp_controller/const.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/custom_components/swamp_controller/manifest.json" beforeDir="false" afterPath="$PROJECT_DIR$/custom_components/swamp_controller/manifest.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/swamp/core/config_manager.py" beforeDir="false" afterPath="$PROJECT_DIR$/swamp/core/config_manager.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/swamp/core/controller.py" beforeDir="false" afterPath="$PROJECT_DIR$/swamp/core/controller.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/swamp/core/state_manager.py" beforeDir="false" afterPath="$PROJECT_DIR$/swamp/core/state_manager.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/swamp/protocol/swamp_protocol.py" beforeDir="false" afterPath="$PROJECT_DIR$/swamp/protocol/swamp_protocol.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -13,30 +22,30 @@
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
-  <component name="ProjectColorInfo"><![CDATA[{
-  "associatedIndex": 1
-}]]></component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 1
+}</component>
   <component name="ProjectId" id="37B6HLzYQ4TyxU11NiT37i60NLV" />
   <component name="ProjectViewState">
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "ModuleVcsDetector.initialDetectionPerformed": "true",
-    "Python.SWAMP Controller.executor": "Run",
-    "Python.__main__.executor": "Run",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
-    "RunOnceActivity.git.unshallow": "true",
-    "RunOnceActivity.typescript.service.memoryLimit.init": "true",
-    "ai.playground.ignore.import.keys.banner.in.settings": "true",
-    "git-widget-placeholder": "master",
-    "nodejs_package_manager_path": "npm",
-    "settings.editor.selected.configurable": "preferences.keymap",
-    "vue.rearranger.settings.migration": "true"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
+    &quot;Python.SWAMP Controller.executor&quot;: &quot;Run&quot;,
+    &quot;Python.__main__.executor&quot;: &quot;Run&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.typescript.service.memoryLimit.init&quot;: &quot;true&quot;,
+    &quot;ai.playground.ignore.import.keys.banner.in.settings&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;ha&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;preferences.keymap&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
-}]]></component>
+}</component>
   <component name="RunManager">
     <configuration name="SWAMP Controller" type="PythonConfigurationType" factoryName="Python" temporary="true">
       <module name="swamp-controller" />

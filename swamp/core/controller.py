@@ -1,5 +1,5 @@
 import logging
-from swamp.models.config import AppConfig
+from ..models.config import AppConfig
 
 
 logger = logging.getLogger(__name__)

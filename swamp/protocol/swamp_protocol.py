@@ -1,4 +1,4 @@
-from swamp.protocol.base import ProtocolHandler
+from .base import ProtocolHandler
 
 
 class SwampProtocol(ProtocolHandler):

@@ -1,6 +1,6 @@
 import yaml
 from pathlib import Path
-from swamp.models.config import AppConfig, Source, Target, SwampZone
+from ..models.config import AppConfig, Source, Target, SwampZone
 
 
 class ConfigManager:

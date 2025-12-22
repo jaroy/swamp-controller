@@ -25,53 +25,73 @@ The SWAMP Controller integration exposes your Crestron SWAMP multi-zone audio sy
 
 1. Your SWAMP controller must be properly configured with a `config.yaml` file
 2. Home Assistant must be able to reach the network where SWAMP devices connect
+3. Python development environment access (for pip installation)
 
-### Step 1: Copy Integration Files
+### Step 1: Install the SWAMP Package
 
-Copy the entire `custom_components/swamp_controller` directory to your Home Assistant configuration directory:
+The integration requires the `swamp` package to be installed in the Home Assistant Python environment.
+
+**For Home Assistant Core:**
 
 ```bash
-# If using Home Assistant OS/Supervised
-cp -r custom_components/swamp_controller /config/custom_components/
+# Activate your Home Assistant virtual environment
+source /path/to/homeassistant/bin/activate
 
-# If using Home Assistant Container
-cp -r custom_components/swamp_controller /path/to/homeassistant/config/custom_components/
-
-# If using Home Assistant Core
-cp -r custom_components/swamp_controller ~/.homeassistant/custom_components/
+# Install the swamp package in development mode
+cd /path/to/swamp-controller
+pip install -e .
 ```
 
-### Step 2: Copy Configuration File
+**For Home Assistant Container/Docker:**
+
+You'll need to install the package inside the container. This can be done by:
+
+1. Creating a custom Docker image that includes the swamp package, OR
+2. Installing it at runtime using a custom script
+
+Example for runtime installation:
+```bash
+# Enter the container
+docker exec -it <container-name> bash
+
+# Install the swamp package
+cd /tmp
+git clone https://github.com/jaroy/swamp-controller.git
+cd swamp-controller
+pip install -e .
+```
+
+**Note**: Container installations may not persist across container restarts. Consider using a custom Docker image for production use.
+
+**For Home Assistant OS/Supervised:**
+
+Installation requires SSH access to the host and the Advanced SSH add-on:
+```bash
+# These systems don't easily support custom Python packages
+# Consider using Home Assistant Core or Container instead
+```
+
+### Step 2: Copy Integration Files
+
+Copy the integration files (without the bundled swamp package) to your Home Assistant configuration directory:
+
+```bash
+# From project root
+cp -r custom_components/swamp_controller /path/to/homeassistant/config/custom_components/
+```
+
+**For Docker users:**
+```bash
+docker cp custom_components/swamp_controller <container-name>:/config/custom_components/
+```
+
+### Step 3: Copy Configuration File
 
 Ensure your SWAMP configuration file is accessible to Home Assistant:
 
 ```bash
 # Copy your config.yaml to Home Assistant config directory
-cp config/config.yaml /config/swamp_config.yaml
-```
-
-### Step 3: Install Python Dependencies
-
-The integration requires the SWAMP controller Python package. You need to make the `swamp` package available to Home Assistant.
-
-**Option A: Install in Home Assistant Python environment**
-
-If you have access to the Home Assistant Python environment:
-
-```bash
-# Navigate to your project root
-cd /path/to/swamp-controller
-
-# Install the swamp package
-pip install -e .
-```
-
-**Option B: Copy swamp package to custom_components**
-
-Alternatively, copy the swamp package into the integration:
-
-```bash
-cp -r swamp custom_components/swamp_controller/
+cp config/config.yaml /path/to/homeassistant/config/swamp_config.yaml
 ```
 
 ### Step 4: Restart Home Assistant
@@ -92,7 +112,7 @@ ha core restart
 2. Click **+ ADD INTEGRATION**
 3. Search for **"Crestron SWAMP Controller"**
 4. Configure the integration:
-   - **Configuration File Path**: Path to your `config.yaml` (e.g., `/config/swamp_config.yaml`)
+   - **Configuration File Path**: Path to your `config.yaml` (default: `/config/swamp_config.yaml`)
    - **TCP Port**: Port for SWAMP device connections (default: `41794`)
 5. Click **Submit**
 
@@ -298,8 +318,4 @@ The integration consists of:
 ## Support
 
 For issues, questions, or feature requests, please file an issue at:
-https://github.com/yourusername/swamp-controller/issues
-
-## License
-
-[Your license here]
+https://github.com/jaroy/swamp-controller/issues

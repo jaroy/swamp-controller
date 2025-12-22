@@ -1,6 +1,6 @@
 from datetime import datetime
-from swamp.models.config import AppConfig, Source
-from swamp.models.state import DeviceState, ZoneState
+from ..models.config import AppConfig, Source
+from ..models.state import DeviceState, ZoneState
 
 
 class StateManager:

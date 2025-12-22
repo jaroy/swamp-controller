@@ -9,8 +9,27 @@ Interactive command-line controller for Crestron SWAMP media amplifier systems.
 - **State Management**: Maintains local state synchronized with device
 - **Multi-zone Support**: Commands automatically broadcast to all zones in a target
 - **Pluggable Protocol**: Protocol handler designed for easy extension
+- **Home Assistant Integration**: Native HA integration with media player entities
 
-## Installation
+## Home Assistant Integration
+
+This project includes a **Home Assistant integration** that exposes your Crestron SWAMP system as media player entities in Home Assistant. Each target (room/zone) appears as a controllable media player with volume control, source selection, and power control.
+
+### Installation
+
+See [HOMEASSISTANT.md](HOMEASSISTANT.md) for detailed installation instructions.
+
+### Features
+- Media player entity for each target/zone
+- Real-time state updates from SWAMP device
+- Volume control (0-100%)
+- Source selection from configured sources
+- Power on/off control
+- Device availability tracking
+
+---
+
+## CLI Installation
 
 1. Ensure Python 3.12+ is installed
 2. Create and activate virtual environment:

@@ -8,7 +8,7 @@ CONF_PORT = "port"
 
 # Defaults
 DEFAULT_PORT = 41794
-DEFAULT_CONFIG_FILE = "/config/config.yaml"
+DEFAULT_CONFIG_FILE = "/config/swamp_config.yaml"
 
 # Services
 SERVICE_ROUTE_SOURCE = "route_source"
