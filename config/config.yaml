@@ -1,0 +1,84 @@
+sources:
+  - id: music-a
+    name: Player A
+    swamp-source-id: 4
+  - id: music-b
+    name: Player B
+    swamp-source-id: 5
+  - id: music-main
+    name: Main
+    swamp-source-id: 6
+
+targets:
+  - id: office-terrace
+    name: Office Terrace
+    swamp-zones:
+      - unit: 3 # Main SWAMP
+        zone: 1
+  - id: outdoor-shower
+    name: Outdoor Shower
+    swamp-zones:
+      - unit: 3 # Main SWAMP
+        zone: 3
+  - id: guest-house
+    name: Guest House
+    swamp-zones:
+      - unit: 3 # Main SWAMP
+        zone: 4
+  - id: library
+    name: Library
+    swamp-zones:
+      - unit: 3 # Main SWAMP
+        zone: 5
+  - id: master-patio
+    name: Master Patio
+    swamp-zones:
+      - unit: 3 # Main SWAMP
+        zone: 6
+  - id: master-bedroom
+    name: Master Bedroom
+    swamp-zones:
+      - unit: 3 # Main SWAMP
+        zone: 7
+  - id: master-bathroom
+    name: Master Bathroom
+    swamp-zones:
+      - unit: 3 # Main SWAMP
+        zone: 8
+  - id: office
+    name: Office
+    swamp-zones:
+      - unit: 4 # Expander 1
+        zone: 1
+  - id: great-room
+    name: Great Room
+    swamp-zones:
+      - unit: 4 # Expander 1
+        zone: 2
+      - unit: 4 # Expander 1
+        zone: 3
+#  - name: Mom Wing
+#    id: mom-wing
+#    zones:
+#      - unit: 4 # Expander 1
+#        zone: 4
+  - id: kitchen
+    name: Kitchen
+    swamp-zones:
+      - unit: 4 # Expander 1
+        zone: 5
+      - unit: 4 # Expander 1
+        zone: 6
+  - id: loggia
+    name: Loggia
+    swamp-zones:
+      - unit: 5 # Expander 2
+        zone: 1
+      - unit: 5 # Expander 2
+        zone: 2
+      - unit: 5 # Expander 2
+        zone: 3
+      - unit: 5 # Expander 2
+        zone: 4
+      - unit: 5 # Expander 2
+        zone: 5
