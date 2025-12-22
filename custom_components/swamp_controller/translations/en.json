@@ -1,0 +1,22 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Configure SWAMP Controller",
+        "description": "Set up your Crestron SWAMP Controller integration.",
+        "data": {
+          "config_file": "Configuration File Path",
+          "port": "TCP Port"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Configuration file not found",
+      "invalid_config": "Invalid configuration file",
+      "unknown": "Unexpected error occurred"
+    },
+    "abort": {
+      "already_configured": "Device is already configured"
+    }
+  }
+}
