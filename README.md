@@ -145,6 +145,8 @@ quit
 ```
 
 ## Architecture
+The controller works by impersonating a Crestron processor gateway, e.g. a Crestron CP3. The client
+is the SWAMP and it connects to our server which then establishes the communication link.
 
 ```
 User Shell (REPL)
@@ -167,11 +169,12 @@ TCP Server (asyncio)
 - **Shell**: Command parser and interactive REPL
 
 ## Protocol Implementation
-
-The protocol handler has partial implementation:
+The Protocol Handler partially implements the Crestron Internet Protocol (CIP), a proprietary protocol 
+for communication between Crestron devices. Only the message types for basic control of the SWAMP system
+are implemented.
 
 ### Message Format
-All SWAMP messages follow this format:
+All CIP messages follow this format:
 - **Byte 0**: Message type
 - **Bytes 1-2**: Remaining length (total bytes - 3) in big-endian
 - **Bytes 3+**: Payload
@@ -184,10 +187,11 @@ Example: `0a 00 0a 00 51 a3 42 40 02 00 00 00 00`
 
 ### Implemented Messages
 - **WHOIS** (`0f 00 01 02`) - Sent automatically when client connects, also available via `whois` command
-- **PING** (`0d 00 02 00 00`) - Automatically detected and triggers PONG response
+- **PING** (`0d 00 02 00 00`) - Automatically detected and triggers PONG response. Sent periodically in the background.
 - **PONG** (`0e 00 02 00 00`) - Sent automatically in response to PING
 - **CLIENT_SIGNON** (`0a ...`) - Sent by device on connect, triggers CONN_ACCEPTED response
 - **CONN_ACCEPTED** (`02 00 04 00 00 00 03`) - Sent automatically in response to CLIENT_SIGNON
+- **JOIN** (`05 ...`) - The actual control messages for setting and getting information about the SWAMP
 
 ### Unknown Message Handling
 Any message not recognized will be printed to the console in hex format, making it easy to discover and implement new message types.
