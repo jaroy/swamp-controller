@@ -17,6 +17,7 @@ class SwampTcpServer:
         self.client_writer = None
         self.client_address = None
         self.client_handler_task = None
+        self.magic_packets_sent = False
 
     async def start(self):
         """Start TCP server listening on port"""
@@ -64,6 +65,7 @@ class SwampTcpServer:
         self.state_manager.state.socket_connected = True
         self.state_manager.state.client_address = str(self.client_address)
         self.state_manager.state.conn_accepted_sent = False
+        self.magic_packets_sent = False  # Reset for new connection
 
         # Send WHOIS automatically on connection
         try:
@@ -100,6 +102,26 @@ class SwampTcpServer:
                             pong_bytes = await self.protocol.encode_pong()
                             writer.write(pong_bytes)
                             await writer.drain()
+                        # Handle PONG (response to our periodic PING)
+                        elif msg_type == 'pong':
+                            logger.debug('Received PONG')
+                        # Handle JOIN messages from device
+                        elif msg_type == 'join':
+                            join_type = message.get('join_type', 'unknown')
+                            if join_type == 'serial_binary':
+                                # Update state from SERIAL_BINARY register data
+                                unit = message.get('unit')
+                                zone = message.get('zone')
+                                register = message.get('register')
+                                value = message.get('value')
+
+                                if unit is not None and zone is not None and register and value is not None:
+                                    logger.info(f'Unit {unit} Zone {zone}: {register} = {value}')
+                                    await self.state_manager.update_from_device(message)
+                                else:
+                                    logger.debug(f'Received JOIN (serial_binary) - incomplete data')
+                            else:
+                                logger.debug(f'Received JOIN ({join_type})')
                         # Handle CLIENT_SIGNON with automatic CONN_ACCEPTED response
                         elif msg_type == 'client_signon':
                             logger.info(f'Received CLIENT_SIGNON: {message.get("payload")}')
@@ -156,9 +178,38 @@ class SwampTcpServer:
             await writer.wait_closed()
 
     async def send_command(self, data: bytes):
-        """Send command to connected SWAMP device"""
+        """Send command to connected SWAMP device
+
+        Automatically sends magic DIGITAL JOIN packets before first SERIAL_BINARY message.
+        """
         if not self.client_writer:
             raise ConnectionError("No SWAMP device connected")
+
+        # Check if this is a SERIAL_BINARY message (JOIN type 0x05, join type 0x20)
+        is_serial_binary = (
+            len(data) >= 7 and
+            data[0] == 0x05 and  # JOIN message
+            data[6] == 0x20       # SERIAL_BINARY join type
+        )
+
+        # Send magic packets before first SERIAL_BINARY message
+        if is_serial_binary and not self.magic_packets_sent:
+            logger.info('Sending magic DIGITAL JOIN packets')
+            msg1, msg2 = self.protocol.encode_join_digital_magic()
+
+            self.client_writer.write(msg1)
+            await self.client_writer.drain()
+            logger.debug('Sent magic packet 1')
+
+            self.client_writer.write(msg2)
+            await self.client_writer.drain()
+            logger.debug('Sent magic packet 2')
+
+            # Wait 100ms after sending magic packets
+            await asyncio.sleep(0.1)
+
+            self.magic_packets_sent = True
+            logger.info('Magic packets sent, ready for SERIAL_BINARY commands')
 
         try:
             self.client_writer.write(data)

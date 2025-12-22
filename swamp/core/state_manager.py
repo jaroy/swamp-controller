@@ -24,7 +24,27 @@ class StateManager:
         self.state.last_update = datetime.now()
 
         msg_type = message.get('type')
-        if msg_type == 'zone_update':
+
+        # Handle JOIN SERIAL_BINARY messages
+        if msg_type == 'join' and message.get('join_type') == 'serial_binary':
+            unit = message.get('unit')
+            zone = message.get('zone')
+            register = message.get('register')
+            value = message.get('value')
+
+            if unit is None or zone is None or register is None or value is None:
+                return
+
+            key = (unit, zone)
+            if key in self.state.zones:
+                zone_state = self.state.zones[key]
+                if register == 'source':
+                    zone_state.source_id = value
+                elif register == 'volume':
+                    zone_state.volume = value
+
+        # Handle legacy zone_update messages
+        elif msg_type == 'zone_update':
             unit = message.get('unit')
             zone = message.get('zone')
             key = (unit, zone)
