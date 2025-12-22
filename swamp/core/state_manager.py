@@ -40,6 +40,7 @@ class StateManager:
                 zone_state = self.state.zones[key]
                 if register == 'source':
                     zone_state.source_id = value
+                    zone_state.source_received = True  # Mark as having received data
                 elif register == 'volume':
                     zone_state.volume = value
 

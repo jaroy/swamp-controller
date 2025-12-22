@@ -11,6 +11,7 @@ class ZoneState:
     volume: int = 0
     source_id: int | None = None
     muted: bool = False
+    source_received: bool = False  # True once we've received source data from device
 
 
 @dataclass

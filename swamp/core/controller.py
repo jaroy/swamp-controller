@@ -56,19 +56,26 @@ class SwampController:
             source = self.state.get_source_by_id(source_id)
             swamp_source_id = source.swamp_source_id
             logger.info(f"Powering on {target_id} with source {source_id} ({len(zones)} zones)")
+
+            for zone_state in zones:
+                # Use route command for power on (sets the actual source)
+                command_bytes = await self.tcp.protocol.encode_route_command(
+                    zone_state.unit, zone_state.zone, swamp_source_id
+                )
+                await self.tcp.send_command(command_bytes)
+                zone_state.power = True
+                zone_state.source_id = swamp_source_id
         else:
             # Power off = route source 0 (no source) to zone
-            swamp_source_id = 0
             logger.info(f"Powering off {target_id} ({len(zones)} zones)")
 
-        for zone_state in zones:
-            command_bytes = await self.tcp.protocol.encode_power_command(
-                zone_state.unit, zone_state.zone, power_on
-            )
-            await self.tcp.send_command(command_bytes)
-
-            zone_state.power = power_on
-            zone_state.source_id = swamp_source_id if power_on else None
+            for zone_state in zones:
+                command_bytes = await self.tcp.protocol.encode_power_command(
+                    zone_state.unit, zone_state.zone, False
+                )
+                await self.tcp.send_command(command_bytes)
+                zone_state.power = False
+                zone_state.source_id = None
 
     async def send_whois(self) -> None:
         """Send WHOIS request to connected device"""
@@ -102,7 +109,8 @@ class SwampController:
                             'zone': z.zone,
                             'power': z.power,
                             'volume': z.volume,
-                            'source': z.source_id
+                            'source': z.source_id,
+                            'source_received': z.source_received
                         }
                         for z in self.state.get_zones_for_target(target.id)
                     ]

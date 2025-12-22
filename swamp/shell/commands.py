@@ -105,12 +105,24 @@ class CommandHandlers:
                 targets = status['targets']
 
             for target in targets:
-                output.append(f"{target['name']} ({target['id']}):")
-                for zone in target['zones']:
-                    source = f"Source {zone['source']}" if zone['source'] else "No source"
-                    power = "On" if zone['power'] else "Off"
-                    output.append(f"  Unit {zone['unit']} Zone {zone['zone']}: {power}, Vol: {zone['volume']}, {source}")
-                output.append("")
+                # Check if target has any valid zones
+                valid_zones = [z for z in target['zones'] if z.get('source_received', False)]
+
+                if not valid_zones:
+                    # No zones have received data yet
+                    output.append(f"{target['name']} ({target['id']}): [Waiting for device data]")
+                    output.append("")
+                else:
+                    output.append(f"{target['name']} ({target['id']}):")
+                    for zone in target['zones']:
+                        if not zone.get('source_received', False):
+                            # Zone hasn't received data yet
+                            output.append(f"  Unit {zone['unit']} Zone {zone['zone']}: [Not synced]")
+                        else:
+                            source = f"Source {zone['source']}" if zone['source'] else "No source"
+                            power = "On" if zone['power'] else "Off"
+                            output.append(f"  Unit {zone['unit']} Zone {zone['zone']}: {power}, Vol: {zone['volume']}, {source}")
+                    output.append("")
 
             return "\n".join(output)
         except Exception as e:
