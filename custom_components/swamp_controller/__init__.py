@@ -10,11 +10,11 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 
-from .swamp.core.config_manager import ConfigManager
-from .swamp.core.state_manager import StateManager
-from .swamp.core.controller import SwampController
-from .swamp.protocol.swamp_protocol import SwampProtocol
-from .swamp.network.tcp_server import SwampTcpServer
+from swamp.core.config_manager import ConfigManager
+from swamp.core.state_manager import StateManager
+from swamp.core.controller import SwampController
+from swamp.protocol.swamp_protocol import SwampProtocol
+from swamp.network.tcp_server import SwampTcpServer
 
 from .const import CONF_CONFIG_FILE, CONF_PORT, DOMAIN
 

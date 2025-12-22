@@ -3,7 +3,7 @@
   <component name="ChangeListManager">
     <list default="true" id="cfab4d4e-1e86-467a-8148-a96b9acfb9ae" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/HOMEASSISTANT.md" beforeDir="false" afterPath="$PROJECT_DIR$/HOMEASSISTANT.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/custom_components/swamp_controller/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/custom_components/swamp_controller/__init__.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
