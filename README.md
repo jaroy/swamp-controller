@@ -20,6 +20,8 @@ This project includes a **Home Assistant integration** that exposes your Crestro
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 [![PyPI](https://img.shields.io/pypi/v/crestron-swamp-controller)](https://pypi.org/project/crestron-swamp-controller/)
 
+> **Note**: This is a **custom HACS repository**. You need to add it manually using the instructions below.
+
 1. Ensure [HACS](https://hacs.xyz/) is installed in your Home Assistant instance
 2. Add this repository as a custom repository in HACS:
    - Open HACS in Home Assistant

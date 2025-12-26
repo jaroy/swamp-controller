@@ -1,7 +1,7 @@
 {
   "domain": "swamp_controller",
   "name": "Crestron SWAMP Controller",
-  "codeowners": [],
+  "codeowners": ["@jaroy"],
   "config_flow": true,
   "dependencies": [],
   "documentation": "https://github.com/jaroy/swamp-controller",
