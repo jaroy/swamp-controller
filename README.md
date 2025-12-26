@@ -15,9 +15,25 @@ Interactive command-line controller for Crestron SWAMP media amplifier systems.
 
 This project includes a **Home Assistant integration** that exposes your Crestron SWAMP system as media player entities in Home Assistant. Each target (room/zone) appears as a controllable media player with volume control, source selection, and power control.
 
-### Installation
+### Installation via HACS (Recommended)
 
-See [HOMEASSISTANT.md](HOMEASSISTANT.md) for detailed installation instructions.
+[![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
+[![PyPI](https://img.shields.io/pypi/v/crestron-swamp-controller)](https://pypi.org/project/crestron-swamp-controller/)
+
+1. Ensure [HACS](https://hacs.xyz/) is installed in your Home Assistant instance
+2. Add this repository as a custom repository in HACS:
+   - Open HACS in Home Assistant
+   - Go to "Integrations"
+   - Click the three dots menu (top right) and select "Custom repositories"
+   - Add `https://github.com/jaroy/swamp-controller` as an Integration
+   - Click "Add"
+3. Find "Crestron SWAMP Controller" in HACS and click "Download"
+4. Restart Home Assistant
+5. Add the integration through Settings > Devices & Services > Add Integration
+
+The `crestron-swamp-controller` package will be automatically installed from PyPI when you add the integration.
+
+See [HOMEASSISTANT.md](HOMEASSISTANT.md) for more detailed installation instructions and configuration options.
 
 ### Features
 - Media player entity for each target/zone
@@ -248,37 +264,6 @@ python -m swamp --log-level DEBUG
 Run on a different port:
 ```bash
 python -m swamp --port 41795
-```
-
-## Project Structure
-
-```
-swamp-controller/
-├── config/
-│   └── config.yaml          # Configuration file
-├── swamp/
-│   ├── __main__.py          # Entry point
-│   ├── models/              # Data models
-│   │   ├── config.py
-│   │   ├── state.py
-│   │   └── commands.py
-│   ├── core/                # Core logic
-│   │   ├── config_manager.py
-│   │   ├── state_manager.py
-│   │   └── controller.py
-│   ├── protocol/            # Protocol handling
-│   │   ├── base.py
-│   │   └── swamp_protocol.py
-│   ├── network/             # TCP server
-│   │   └── tcp_server.py
-│   └── shell/               # Interactive shell
-│       ├── parser.py
-│       ├── commands.py
-│       └── repl.py
-├── tests/                   # Test suite
-├── requirements.txt         # Dependencies
-├── pyproject.toml          # Project metadata
-└── README.md               # This file
 ```
 
 ## License
