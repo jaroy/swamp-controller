@@ -75,6 +75,10 @@ sources:
   - id: music-a
     name: Player A
     swamp-source-id: 4
+    # Optional: the HA media_player that renders this source into the SWAMP input
+    # (e.g. a Music Assistant player). Zones routed to this source proxy that
+    # player's play/pause state, now-playing metadata, and transport controls.
+    upstream-player: media_player.player_a
 
 targets:
   - id: office-terrace
@@ -84,6 +88,21 @@ targets:
       - unit: 3
         zone: 1
 ```
+
+### Proxying source playback state (`upstream-player`)
+
+The SWAMP hardware only knows a zone's volume, selected source, and on/off state —
+it has no concept of play/pause, the current track, or a queue. That information
+lives on whatever HA `media_player` actually renders the audio into the SWAMP input
+(for example, the Music Assistant player feeding a source). Set `upstream-player` on
+a source to that entity_id, and any zone routed to that source will mirror the
+upstream player's transport state and now-playing metadata, and forward
+play/pause/stop/next/previous to it.
+
+Because a SWAMP input is a single shared stream, every zone on the same source shows
+the same now-playing — which matches reality. The upstream player's queue itself
+isn't part of HA's `media_player` model; point a Music Assistant card at the upstream
+entity for full queue control.
 
 ### On the SWAMP
 We have to tell the SWAMP to connect to us instead of a Crestron processor.

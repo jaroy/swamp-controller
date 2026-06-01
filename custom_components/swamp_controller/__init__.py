@@ -66,6 +66,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if "default-volume" in t
     }
 
+    # Optional per-source `upstream-player`: the HA media_player entity that actually
+    # renders that source's audio into the SWAMP input (e.g. the Music Assistant
+    # player). When a zone is routed to such a source, the zone entity proxies that
+    # player's transport state, now-playing metadata, and playback controls.
+    # (Also a ConfigManager-ignored key, so parse it from the raw YAML.) Keyed by
+    # swamp-source-id to match `ZoneState.source_id`.
+    source_upstream_players = {
+        s["swamp-source-id"]: s["upstream-player"]
+        for s in raw.get("sources", [])
+        if s.get("upstream-player")
+    }
+    _LOGGER.debug("Source upstream players (swamp_source_id -> entity): %s", source_upstream_players)
+
     # Create core components
     protocol = SwampProtocol()
     state_manager = StateManager(config)
@@ -80,6 +93,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "config": config,
         "zone_default_volume": global_default_volume,
         "zone_default_volumes": target_default_volumes,
+        "source_upstream_players": source_upstream_players,
         "server_task": None,
     }
 

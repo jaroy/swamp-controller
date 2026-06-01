@@ -6,6 +6,11 @@ sources:
   - id: music-a
     name: Player A
     swamp-source-id: 4
+    # Optional: the HA media_player that renders this source's audio into the SWAMP
+    # input (e.g. a Music Assistant player). When a zone is routed to this source,
+    # the zone entity proxies that player's play/pause state, now-playing metadata,
+    # and transport controls (play/pause/next/previous).
+    upstream-player: media_player.player_a
   - id: music-b
     name: Player B
     swamp-source-id: 5
