@@ -1,3 +1,7 @@
+# Volume (0-100) a zone is set to when its player is turned on (so enabling a zone
+# isn't silent). Optional; defaults to 40. Can be overridden per target below.
+default-volume: 40
+
 sources:
   - id: music-a
     name: Player A
@@ -12,6 +16,7 @@ sources:
 targets:
   - id: office-terrace
     name: Office Terrace
+    default-volume: 30  # optional per-zone override of the global default-volume
     swamp-zones:
       - unit: 3 # Main SWAMP
         zone: 1

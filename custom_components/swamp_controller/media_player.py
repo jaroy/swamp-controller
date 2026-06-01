@@ -1,6 +1,7 @@
 """Support for SWAMP Controller media players."""
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -19,6 +20,11 @@ from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
+# On turn-on, ramp the zone volume up to its default over this duration (in this many
+# steps) so it fades in rather than jumping instantly.
+VOLUME_RAMP_SECONDS = 2.0
+VOLUME_RAMP_STEPS = 20
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -29,11 +35,20 @@ async def async_setup_entry(
     data = hass.data[DOMAIN][config_entry.entry_id]
     controller = data["controller"]
     config = data["config"]
+    global_default = data["zone_default_volume"]
+    per_target = data["zone_default_volumes"]
 
     # Create a media player entity for each target
     entities = []
     for target in config.targets:
-        entities.append(SwampMediaPlayer(controller, target, config_entry))
+        entities.append(
+            SwampMediaPlayer(
+                controller,
+                target,
+                config_entry,
+                default_volume=per_target.get(target.id, global_default),
+            )
+        )
 
     async_add_entities(entities, True)
     _LOGGER.info("Added %d SWAMP media player entities", len(entities))
@@ -45,11 +60,13 @@ class SwampMediaPlayer(MediaPlayerEntity):
     _attr_has_entity_name = True
     _attr_should_poll = True
 
-    def __init__(self, controller, target, config_entry: ConfigEntry) -> None:
+    def __init__(self, controller, target, config_entry: ConfigEntry, default_volume: int) -> None:
         """Initialize the SWAMP media player."""
         self._controller = controller
         self._target = target
         self._config_entry = config_entry
+        self._default_volume = default_volume
+        self._ramp_task: asyncio.Task | None = None
 
         # Set unique ID and device info
         self._attr_unique_id = f"{config_entry.entry_id}_{target.id}"
@@ -163,15 +180,54 @@ class SwampMediaPlayer(MediaPlayerEntity):
                     self._target.id, True, first_source.id
                 )
 
+        # Show the zone "on" at 0 volume immediately, then ramp up in the background
+        # so the UI reflects it right away and the slider visibly climbs.
+        await self._begin_ramp(self._default_volume)
+
     async def async_turn_off(self) -> None:
         """Turn the media player off."""
+        self._cancel_ramp()
         await self._controller.set_power(self._target.id, False)
+        self.async_write_ha_state()
 
     async def async_set_volume_level(self, volume: float) -> None:
         """Set volume level, range 0..1."""
-        # Convert from 0.0-1.0 to 0-100
+        self._cancel_ramp()  # a manual volume change cancels an in-progress ramp
         volume_percent = int(volume * 100)
         await self._controller.set_volume(self._target.id, volume_percent)
+        self.async_write_ha_state()
+
+    async def _begin_ramp(self, target_volume: int) -> None:
+        """Set the zone to 0 and reflect it now, then ramp up in the background."""
+        await self._controller.set_volume(self._target.id, 0)
+        self.async_write_ha_state()
+        self._cancel_ramp()
+        self._ramp_task = self.hass.async_create_background_task(
+            self._ramp_volume(target_volume), name=f"swamp_volume_ramp_{self._target.id}"
+        )
+
+    def _cancel_ramp(self) -> None:
+        """Cancel an in-progress volume ramp, if any."""
+        if self._ramp_task is not None and not self._ramp_task.done():
+            self._ramp_task.cancel()
+        self._ramp_task = None
+
+    async def _ramp_volume(self, target_volume: int) -> None:
+        """Ramp 0 -> target_volume over VOLUME_RAMP_SECONDS, pushing state each step."""
+        interval = VOLUME_RAMP_SECONDS / VOLUME_RAMP_STEPS
+        try:
+            for step in range(1, VOLUME_RAMP_STEPS + 1):
+                level = round(target_volume * step / VOLUME_RAMP_STEPS)
+                await self._controller.set_volume(self._target.id, level)
+                self.async_write_ha_state()
+                if step < VOLUME_RAMP_STEPS:
+                    await asyncio.sleep(interval)
+        except asyncio.CancelledError:
+            pass
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Cancel any in-progress ramp when the entity goes away."""
+        self._cancel_ramp()
 
     async def async_volume_up(self) -> None:
         """Volume up the media player."""
@@ -188,12 +244,22 @@ class SwampMediaPlayer(MediaPlayerEntity):
             await self._controller.set_volume(self._target.id, new_volume)
 
     async def async_select_source(self, source: str) -> None:
-        """Select input source."""
-        if source in self._source_id_map:
-            source_id = self._source_id_map[source]
-            await self._controller.route_source_to_target(source_id, self._target.id)
-        else:
+        """Select input source (implicitly powers the zone on)."""
+        if source not in self._source_id_map:
             _LOGGER.warning("Unknown source: %s", source)
+            return
+
+        # If the zone is currently off, selecting a source powers it on, so apply
+        # the default-volume ramp (same as turning it on). If it's already on, just
+        # switch the source and leave the current volume alone.
+        zone = self._get_primary_zone()
+        was_off = zone is None or zone.source_id is None or zone.source_id == 0
+
+        source_id = self._source_id_map[source]
+        await self._controller.route_source_to_target(source_id, self._target.id)
+
+        if was_off:
+            await self._begin_ramp(self._default_volume)
 
     async def async_update(self) -> None:
         """Update the entity state."""

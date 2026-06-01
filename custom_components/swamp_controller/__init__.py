@@ -5,6 +5,8 @@ import asyncio
 import logging
 from pathlib import Path
 
+import yaml
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
@@ -16,11 +18,17 @@ from swamp.core.controller import SwampController
 from swamp.protocol.swamp_protocol import SwampProtocol
 from swamp.network.tcp_server import SwampTcpServer
 
-from .const import CONF_CONFIG_FILE, CONF_PORT, DOMAIN
+from .const import CONF_CONFIG_FILE, CONF_PORT, DEFAULT_ZONE_VOLUME, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[Platform] = [Platform.MEDIA_PLAYER]
+
+
+def _load_raw_yaml(path: Path) -> dict:
+    """Load the config YAML as a plain dict (for keys ConfigManager doesn't parse)."""
+    with open(path) as f:
+        return yaml.safe_load(f) or {}
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -44,6 +52,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _LOGGER.error("Failed to load config: %s", err)
         raise ConfigEntryNotReady(f"Failed to load config: {err}") from err
 
+    # Power-on default volume: global `default-volume`, overridable per target.
+    # (These keys are ignored by ConfigManager, so we parse the raw YAML for them.)
+    try:
+        raw = await hass.async_add_executor_job(_load_raw_yaml, config_file)
+    except Exception as err:  # pragma: no cover - already validated above
+        raise ConfigEntryNotReady(f"Failed to load config: {err}") from err
+
+    global_default_volume = raw.get("default-volume", DEFAULT_ZONE_VOLUME)
+    target_default_volumes = {
+        t["id"]: t["default-volume"]
+        for t in raw.get("targets", [])
+        if "default-volume" in t
+    }
+
     # Create core components
     protocol = SwampProtocol()
     state_manager = StateManager(config)
@@ -56,6 +78,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "tcp_server": tcp_server,
         "state_manager": state_manager,
         "config": config,
+        "zone_default_volume": global_default_volume,
+        "zone_default_volumes": target_default_volumes,
         "server_task": None,
     }
 

@@ -67,6 +67,10 @@ See [HOMEASSISTANT.md](HOMEASSISTANT.md) for more detailed installation instruct
 Edit `config/config.yaml` to define your audio sources and target zones:
 
 ```yaml
+# Volume (0-100) a zone is set to when its player is turned on, so enabling a zone
+# isn't silent. Optional (defaults to 40); can be overridden per target.
+default-volume: 40
+
 sources:
   - id: music-a
     name: Player A
@@ -75,6 +79,7 @@ sources:
 targets:
   - id: office-terrace
     name: Office Terrace
+    default-volume: 30   # optional per-zone override
     swamp-zones:
       - unit: 3
         zone: 1
