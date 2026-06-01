@@ -13,7 +13,21 @@ Interactive command-line controller for Crestron SWAMP media amplifier systems.
 
 ## Home Assistant Integration
 
-This project includes a **Home Assistant integration** that exposes your Crestron SWAMP system as media player entities in Home Assistant. Each target (room/zone) appears as a controllable media player with volume control, source selection, and power control.
+This project includes a **Home Assistant integration** that exposes each SWAMP zone (target) as a `media_player` entity. The intended use is to let **Music Assistant** adopt those entities (via its built-in *Home Assistant Players* provider) so you can **play music straight to a room**: when MA plays to a zone, the integration routes the zone's audio source on the SWAMP and sets the zone volume over TCP, and the actual audio is rendered by a squeezelite player wired to a SWAMP analog input.
+
+### How playback works
+
+```
+Music Assistant ──play_media(stream URL)──▶ zone media_player (this integration)
+                                              │  ├─ SWAMP TCP: route source → zone, set zone volume
+                                              │  └─ tell a real Lyrion Music Server to play that URL
+                                              ▼
+                                      squeezelite ─▶ DAC ─▶ SWAMP analog input ─▶ room
+```
+
+- The renderer is a **squeezelite** driven by a **real Lyrion Music Server (LMS)** — *not* MA's emulated LMS, which won't accept arbitrary URLs. Point squeezelite at the real LMS and disable MA's Squeezelite provider so the zones become MA's players.
+- Zone **volume** maps to the SWAMP zone (the LMS player's own volume is pinned to full so only the SWAMP attenuates).
+- **One DAC = one audio stream**: all zones routed to the same source play the same audio, in perfect hardware sync. Add more DACs/LMS players (one `lms-player-id` per SWAMP input) for independent streams.
 
 ### Installation via HACS (Recommended)
 
@@ -38,12 +52,12 @@ The `crestron-swamp-controller` package will be automatically installed from PyP
 See [HOMEASSISTANT.md](HOMEASSISTANT.md) for more detailed installation instructions and configuration options.
 
 ### Features
-- Media player entity for each target/zone
-- Real-time state updates from SWAMP device
-- Volume control (0-100%)
-- Source selection from configured sources
-- Power on/off control
-- Device availability tracking
+- A `media_player` entity per SWAMP zone, adopted by Music Assistant as a player
+- Play to a room: routes the source on the SWAMP + sets zone volume, renders via squeezelite/LMS
+- Transport controls (play/pause/stop/next/previous/seek) forwarded to the renderer
+- Per-zone volume mapped to the SWAMP (0-100%), with mute
+- Configurable default volume on first play (global + per-zone)
+- Usable outside MA too (automations, voice, dashboards, TTS) since zones are real HA entities
 
 ---
 
@@ -64,21 +78,35 @@ See [HOMEASSISTANT.md](HOMEASSISTANT.md) for more detailed installation instruct
 
 ## Configuration
 
-Edit `config/config.yaml` to define your audio sources and target zones:
+Edit `config/config.yaml` to define the LMS renderer, your audio sources, and target zones:
 
 ```yaml
+# Real Lyrion Music Server that drives the squeezelite player(s) feeding SWAMP inputs.
+lms:
+  host: 192.168.1.240
+  port: 9000
+
+# Volume (0-100) applied to a zone on first play; overridable per target.
+default-volume: 40
+
 sources:
-  - id: music-a
-    name: Player A
+  - id: whole-house
+    name: Whole-House
     swamp-source-id: 4
+    lms-player-id: "ca:08:d2:cf:1a:bf"   # squeezelite that feeds SWAMP input 4 (omit for non-MA sources)
 
 targets:
   - id: office-terrace
     name: Office Terrace
+    default-volume: 30                    # optional per-zone override
     swamp-zones:
       - unit: 3
         zone: 1
 ```
+
+Notes:
+- `lms-player-id` is the squeezelite/LMS player rendering that source. Sources without it (e.g. an external hardware input) aren't yet selectable from MA zone players.
+- The CLI controller below is unaffected by the `lms` / `lms-player-id` / `default-volume` keys.
 
 ### On the SWAMP
 We have to tell the SWAMP to connect to us instead of a Crestron processor.

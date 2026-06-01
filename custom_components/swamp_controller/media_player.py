@@ -1,23 +1,51 @@
-"""Support for SWAMP Controller media players."""
+"""SWAMP zones as Home Assistant media players.
+
+Each SWAMP target (room/zone-group) is a media player. Music Assistant adopts these
+via its "Home Assistant Players" provider and streams audio to them. On play we:
+  1. allocate the render source backing the zone (v1: the single MA-fed DAC),
+  2. route that source to the zone and set the zone volume on the SWAMP over TCP,
+  3. hand MA's stream URL to the squeezelite that feeds that SWAMP input, via a real
+     LMS (the only thing that can make the MA-streamed audio actually render).
+Transport controls and now-playing state are forwarded to / mirrored from that LMS
+player; volume maps to the SWAMP zone (the LMS player's own volume is pinned to full
+so only the SWAMP attenuates).
+"""
 from __future__ import annotations
 
 import logging
+from datetime import timedelta
 from typing import Any
 
 from homeassistant.components.media_player import (
+    MediaPlayerDeviceClass,
     MediaPlayerEntity,
     MediaPlayerEntityFeature,
     MediaPlayerState,
+    MediaType,
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.util import dt as dt_util
 
 from swamp.models.state import ZoneState
 
 from .const import DOMAIN
+from .lms_client import LmsClient, LmsError
+from .source_manager import SourceManager, SourceUnavailable
 
 _LOGGER = logging.getLogger(__name__)
+
+SCAN_INTERVAL = timedelta(seconds=5)
+
+# Pin the LMS player's software volume to full so only the SWAMP attenuates.
+LMS_REFERENCE_VOLUME = 100
+
+_LMS_MODE_TO_STATE = {
+    "play": MediaPlayerState.PLAYING,
+    "pause": MediaPlayerState.PAUSED,
+    "stop": MediaPlayerState.IDLE,
+}
 
 
 async def async_setup_entry(
@@ -25,178 +53,258 @@ async def async_setup_entry(
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up SWAMP media player based on a config entry."""
+    """Set up a media player per SWAMP target."""
     data = hass.data[DOMAIN][config_entry.entry_id]
-    controller = data["controller"]
-    config = data["config"]
-
-    # Create a media player entity for each target
-    entities = []
-    for target in config.targets:
-        entities.append(SwampMediaPlayer(controller, target, config_entry))
-
+    global_default = data["zone_default_volume"]
+    per_target = data["zone_default_volumes"]
+    entities = [
+        SwampZoneMediaPlayer(
+            controller=data["controller"],
+            target=target,
+            source_manager=data["source_manager"],
+            lms=data["lms_client"],
+            config_entry=config_entry,
+            default_volume=per_target.get(target.id, global_default),
+        )
+        for target in data["config"].targets
+    ]
     async_add_entities(entities, True)
-    _LOGGER.info("Added %d SWAMP media player entities", len(entities))
+    _LOGGER.info("Added %d SWAMP zone media players", len(entities))
 
 
-class SwampMediaPlayer(MediaPlayerEntity):
-    """Representation of a SWAMP target as a media player."""
+class SwampZoneMediaPlayer(MediaPlayerEntity):
+    """A SWAMP zone exposed as a media player for Music Assistant."""
 
     _attr_has_entity_name = True
     _attr_should_poll = True
+    _attr_device_class = MediaPlayerDeviceClass.SPEAKER
+    _attr_media_content_type = MediaType.MUSIC
+    _attr_supported_features = (
+        MediaPlayerEntityFeature.PLAY_MEDIA
+        | MediaPlayerEntityFeature.PLAY
+        | MediaPlayerEntityFeature.PAUSE
+        | MediaPlayerEntityFeature.STOP
+        | MediaPlayerEntityFeature.NEXT_TRACK
+        | MediaPlayerEntityFeature.PREVIOUS_TRACK
+        | MediaPlayerEntityFeature.SEEK
+        | MediaPlayerEntityFeature.VOLUME_SET
+        | MediaPlayerEntityFeature.VOLUME_STEP
+        | MediaPlayerEntityFeature.VOLUME_MUTE
+        | MediaPlayerEntityFeature.TURN_ON
+        | MediaPlayerEntityFeature.TURN_OFF
+    )
 
-    def __init__(self, controller, target, config_entry: ConfigEntry) -> None:
-        """Initialize the SWAMP media player."""
+    def __init__(
+        self,
+        controller,
+        target,
+        source_manager: SourceManager,
+        lms: LmsClient,
+        config_entry: ConfigEntry,
+        default_volume: int,
+    ) -> None:
         self._controller = controller
         self._target = target
+        self._sources = source_manager
+        self._lms = lms
         self._config_entry = config_entry
+        self._default_volume = default_volume
 
-        # Set unique ID and device info
         self._attr_unique_id = f"{config_entry.entry_id}_{target.id}"
-        self._attr_name = target.name
+        # has_entity_name + a named device => the player takes the device (room) name.
+        self._attr_name = None
 
-        # Get all available sources
-        self._source_list = [source.name for source in controller.config.sources]
-        self._source_id_map = {
-            source.name: source.id for source in controller.config.sources
-        }
-        self._swamp_source_to_name = {
-            source.swamp_source_id: source.name
-            for source in controller.config.sources
-        }
-
-        # Set supported features
-        self._attr_supported_features = (
-            MediaPlayerEntityFeature.VOLUME_SET
-            | MediaPlayerEntityFeature.VOLUME_STEP
-            | MediaPlayerEntityFeature.TURN_ON
-            | MediaPlayerEntityFeature.TURN_OFF
-            | MediaPlayerEntityFeature.SELECT_SOURCE
-        )
-
-        self._attr_source_list = self._source_list
+        self._attr_state = MediaPlayerState.IDLE
+        self._muted = False
+        self._premute_volume_pct: int | None = None
 
     @property
     def device_info(self):
-        """Return device information about this SWAMP target."""
         return {
             "identifiers": {(DOMAIN, f"{self._config_entry.entry_id}_{self._target.id}")},
             "name": self._target.name,
             "manufacturer": "Crestron",
             "model": "SWAMP Zone",
-            "via_device": (DOMAIN, self._config_entry.entry_id),
         }
 
-    def _get_zones(self) -> list[ZoneState]:
-        """Get all zones for this target."""
-        return self._controller.state.get_zones_for_target(self._target.id)
+    # --- SWAMP zone helpers ----------------------------------------------
 
-    def _get_primary_zone(self) -> ZoneState:
-        """Get the primary zone (first zone) for this target."""
-        zones = self._get_zones()
+    def _primary_zone(self) -> ZoneState | None:
+        zones = self._controller.state.get_zones_for_target(self._target.id)
         return zones[0] if zones else None
 
-    @property
-    def state(self) -> MediaPlayerState:
-        """Return the state of the device."""
-        zone = self._get_primary_zone()
-        if not zone:
-            return MediaPlayerState.OFF
+    def _renderer(self):
+        """The render source currently/last backing this zone."""
+        return self._sources.get_renderer(self._target.id) or self._sources.default_source
 
-        # Check if device is connected
-        if not self._controller.state.state.connected:
-            return MediaPlayerState.OFF
+    async def _route_and_set_volume(self, source) -> None:
+        """Route ``source`` to this zone and apply the current zone volume (best effort)."""
+        zone = self._primary_zone()
+        volume_pct = zone.volume if (zone and zone.volume > 0) else self._default_volume
+        try:
+            await self._controller.route_source_to_target(source.id, self._target.id)
+            await self._controller.set_volume(self._target.id, volume_pct)
+        except ConnectionError as err:
+            _LOGGER.warning("SWAMP not connected; zone routing skipped: %s", err)
 
-        # If source_id is None or 0, device is off
-        if zone.source_id is None or zone.source_id == 0:
-            return MediaPlayerState.OFF
+    # --- play / transport -------------------------------------------------
 
-        # Device is on with a source
-        return MediaPlayerState.ON
+    async def async_play_media(self, media_type: str, media_id: str, **kwargs: Any) -> None:
+        """Render ``media_id`` (an MA stream URL) in this zone."""
+        try:
+            source = self._sources.allocate(self._target.id)
+        except SourceUnavailable as err:
+            _LOGGER.error("Cannot play to %s: %s", self._target.id, err)
+            return
+
+        await self._route_and_set_volume(source)
+
+        try:
+            # Only the SWAMP attenuates; keep the renderer at reference volume.
+            await self._lms.set_volume(source.lms_player_id, LMS_REFERENCE_VOLUME)
+            await self._lms.play_url(source.lms_player_id, media_id)
+        except (LmsError, OSError) as err:
+            _LOGGER.error("Failed to render on LMS player %s: %s", source.lms_player_id, err)
+            return
+
+        self._apply_metadata(kwargs.get("extra") or {})
+        self._attr_state = MediaPlayerState.PLAYING
+        self.async_write_ha_state()
+
+    def _apply_metadata(self, extra: dict[str, Any]) -> None:
+        """Display the now-playing metadata MA passed alongside the stream URL."""
+        meta = extra.get("metadata") if isinstance(extra, dict) else None
+        meta = meta or {}
+        self._attr_media_title = meta.get("title")
+        self._attr_media_artist = meta.get("artist")
+        self._attr_media_album_name = meta.get("album")
+        self._attr_media_image_url = meta.get("image_url") or meta.get("image")
+        duration = meta.get("duration")
+        self._attr_media_duration = int(duration) if duration else None
+
+    async def async_media_pause(self) -> None:
+        if source := self._renderer():
+            await self._lms.pause(source.lms_player_id)
+            self._attr_state = MediaPlayerState.PAUSED
+            self.async_write_ha_state()
+
+    async def async_media_play(self) -> None:
+        if source := self._renderer():
+            await self._lms.unpause(source.lms_player_id)
+            self._attr_state = MediaPlayerState.PLAYING
+            self.async_write_ha_state()
+
+    async def async_media_stop(self) -> None:
+        if source := self._renderer():
+            await self._lms.stop(source.lms_player_id)
+            self._attr_state = MediaPlayerState.IDLE
+            self.async_write_ha_state()
+
+    async def async_media_next_track(self) -> None:
+        if source := self._renderer():
+            await self._lms.next_track(source.lms_player_id)
+
+    async def async_media_previous_track(self) -> None:
+        if source := self._renderer():
+            await self._lms.previous_track(source.lms_player_id)
+
+    async def async_media_seek(self, position: float) -> None:
+        if source := self._renderer():
+            await self._lms.seek(source.lms_player_id, position)
+
+    # --- power ------------------------------------------------------------
+
+    async def async_turn_on(self) -> None:
+        """Resume the renderer if one is assigned; otherwise just reflect 'on/idle'.
+
+        A zone has no audio until something is played to it, so with no assigned
+        renderer this only flips the tile to idle (play is what actually starts it).
+        """
+        if source := self._sources.get_renderer(self._target.id):
+            await self._lms.unpause(source.lms_player_id)
+            self._attr_state = MediaPlayerState.PLAYING
+        else:
+            self._attr_state = MediaPlayerState.IDLE
+        self.async_write_ha_state()
+
+    async def async_turn_off(self) -> None:
+        """Disable the zone on the SWAMP; stop the renderer if no zone still needs it."""
+        freed = self._sources.release(self._target.id)
+        try:
+            await self._controller.set_power(self._target.id, False)
+        except ConnectionError as err:
+            _LOGGER.warning("SWAMP not connected; power-off skipped: %s", err)
+        if freed is not None:
+            await self._lms.stop(freed.lms_player_id)
+        self._attr_state = MediaPlayerState.OFF
+        self.async_write_ha_state()
+
+    # --- volume (maps to the SWAMP zone) ---------------------------------
+
+    async def async_set_volume_level(self, volume: float) -> None:
+        pct = int(round(volume * 100))
+        try:
+            await self._controller.set_volume(self._target.id, pct)
+        except ConnectionError as err:
+            _LOGGER.warning("SWAMP not connected; volume change skipped: %s", err)
+        self._muted = False
+        self.async_write_ha_state()
+
+    async def async_volume_up(self) -> None:
+        zone = self._primary_zone()
+        if zone:
+            await self.async_set_volume_level(min(100, zone.volume + 5) / 100)
+
+    async def async_volume_down(self) -> None:
+        zone = self._primary_zone()
+        if zone:
+            await self.async_set_volume_level(max(0, zone.volume - 5) / 100)
+
+    async def async_mute_volume(self, mute: bool) -> None:
+        zone = self._primary_zone()
+        if mute and not self._muted:
+            self._premute_volume_pct = zone.volume if zone else None
+            await self.async_set_volume_level(0)
+            self._muted = True
+        elif not mute and self._muted:
+            restore = self._premute_volume_pct if self._premute_volume_pct is not None else 50
+            await self.async_set_volume_level(restore / 100)
+            self._muted = False
+        self.async_write_ha_state()
+
+    # --- reported state ---------------------------------------------------
 
     @property
     def volume_level(self) -> float | None:
-        """Volume level of the media player (0..1)."""
-        zone = self._get_primary_zone()
-        if not zone:
-            return None
-
-        # Convert from 0-100 to 0.0-1.0
-        return zone.volume / 100.0
+        zone = self._primary_zone()
+        return None if zone is None else zone.volume / 100.0
 
     @property
-    def source(self) -> str | None:
-        """Return the current input source."""
-        zone = self._get_primary_zone()
-        if not zone or zone.source_id is None or zone.source_id == 0:
-            return None
-
-        # Map swamp_source_id to source name
-        return self._swamp_source_to_name.get(zone.source_id)
-
-    @property
-    def available(self) -> bool:
-        """Return True if entity is available."""
-        # Entity is available if device is connected
-        return self._controller.state.state.connected
-
-    async def async_turn_on(self) -> None:
-        """Turn the media player on."""
-        # Default to first source if not already playing
-        zone = self._get_primary_zone()
-        if zone and (zone.source_id is None or zone.source_id == 0):
-            # Use the first configured source
-            first_source = self._controller.config.sources[0]
-            await self._controller.set_power(
-                self._target.id, True, first_source.id
-            )
-        else:
-            # Already has a source, just turn it on with existing source
-            current_source_name = self.source
-            if current_source_name and current_source_name in self._source_id_map:
-                source_id = self._source_id_map[current_source_name]
-                await self._controller.set_power(self._target.id, True, source_id)
-            else:
-                # Fallback to first source
-                first_source = self._controller.config.sources[0]
-                await self._controller.set_power(
-                    self._target.id, True, first_source.id
-                )
-
-    async def async_turn_off(self) -> None:
-        """Turn the media player off."""
-        await self._controller.set_power(self._target.id, False)
-
-    async def async_set_volume_level(self, volume: float) -> None:
-        """Set volume level, range 0..1."""
-        # Convert from 0.0-1.0 to 0-100
-        volume_percent = int(volume * 100)
-        await self._controller.set_volume(self._target.id, volume_percent)
-
-    async def async_volume_up(self) -> None:
-        """Volume up the media player."""
-        zone = self._get_primary_zone()
-        if zone:
-            new_volume = min(100, zone.volume + 5)
-            await self._controller.set_volume(self._target.id, new_volume)
-
-    async def async_volume_down(self) -> None:
-        """Volume down the media player."""
-        zone = self._get_primary_zone()
-        if zone:
-            new_volume = max(0, zone.volume - 5)
-            await self._controller.set_volume(self._target.id, new_volume)
-
-    async def async_select_source(self, source: str) -> None:
-        """Select input source."""
-        if source in self._source_id_map:
-            source_id = self._source_id_map[source]
-            await self._controller.route_source_to_target(source_id, self._target.id)
-        else:
-            _LOGGER.warning("Unknown source: %s", source)
+    def is_volume_muted(self) -> bool:
+        return self._muted
 
     async def async_update(self) -> None:
-        """Update the entity state."""
-        # State is read directly from state_manager which is updated by the TCP server
-        # No need to do anything here, just trigger a state update
-        pass
+        """Mirror playback state/position from the backing LMS player."""
+        source = self._sources.get_renderer(self._target.id)
+        if source is None:
+            # Zone isn't actively backed by a renderer right now.
+            if self._attr_state == MediaPlayerState.PLAYING:
+                self._attr_state = MediaPlayerState.IDLE
+            return
+        try:
+            status = await self._lms.status(source.lms_player_id)
+        except (LmsError, OSError) as err:
+            _LOGGER.debug("LMS status poll failed for %s: %s", source.lms_player_id, err)
+            return
+
+        mode = status.get("mode")
+        if mode in _LMS_MODE_TO_STATE:
+            self._attr_state = _LMS_MODE_TO_STATE[mode]
+
+        position = status.get("time")
+        if position is not None:
+            self._attr_media_position = int(position)
+            self._attr_media_position_updated_at = dt_util.utcnow()
+        duration = status.get("duration")
+        if duration:
+            self._attr_media_duration = int(duration)

@@ -1,9 +1,23 @@
+# Lyrion Music Server that drives the squeezelite player(s) feeding SWAMP inputs.
+# Music Assistant streams to the zone media players; we hand that stream URL to the
+# squeezelite (`lms-player-id`) via this LMS so it renders to the SWAMP analog input.
+lms:
+  host: 192.168.1.240
+  port: 9000
+
+# Volume (0-100) applied to a zone the first time it is played when it has no level
+# yet, so a freshly-played zone isn't silent. Overridable per target below.
+default-volume: 40
+
 sources:
-  - id: music-a
-    name: Player A
+  # MA-rendered source: squeezelite on `lms-player-id` feeds SWAMP analog input 4.
+  - id: whole-house
+    name: Whole-House
     swamp-source-id: 4
-  - id: music-b
-    name: Player B
+    lms-player-id: "ca:08:d2:cf:1a:bf"
+  # Hardware sources (no lms-player-id) are not yet selectable from MA zones.
+  - id: player-a
+    name: Player A
     swamp-source-id: 5
   - id: music-main
     name: Main
@@ -12,6 +26,7 @@ sources:
 targets:
   - id: office-terrace
     name: Office Terrace
+    default-volume: 30  # optional per-zone override of the global default-volume
     swamp-zones:
       - unit: 3 # Main SWAMP
         zone: 1
