@@ -109,6 +109,43 @@ Targets can contain multiple SWAMP zones. When you control a target in Home Assi
 - State is reflected from the first (primary) zone
 - Commands are broadcast to all zones
 
+### Zone Groups (multi-room with per-zone volume scaling)
+
+A **zone group** is an optional *virtual* media player that controls several targets
+at once — one source dropdown and one master volume slider — while giving each member
+its own volume `scale`. This solves the "one master slider, but the rooms have
+different speaker sensitivities" problem that a native Home Assistant media-player
+group can't: the native group sends the *same* absolute level to every member.
+
+Add a top-level `groups:` section:
+
+```yaml
+groups:
+  - id: main-house
+    name: Main House
+    default-volume: 50        # optional; master level applied on power-on
+    members:
+      - target: great-room    # scale defaults to 1.0
+      - target: kitchen
+        scale: 0.6            # kitchen speakers are hotter → damp to 60%
+      - target: loggia
+        scale: 0.85
+```
+
+Behavior:
+- **Master volume** (0–100) maps to each member as `master × scale`, clamped to
+  0–100. Setting the group to 50 puts Great Room at 50, Kitchen at 30, Loggia at ~43.
+- **Source select / power on / off** fan out to every member.
+- The master slider tracks the **last commanded group level** (seeded from the first
+  member at startup). It intentionally does *not* chase individual per-zone volume
+  changes you make on a member directly — nudging one room won't move the group slider.
+- If the group's source has an `upstream-player`, the group tile gains transport
+  controls (play/pause/skip) and now-playing metadata, just like a zone.
+
+A member may also be written as a bare target id (`- great-room`) for scale 1.0.
+The group appears as its own device/entity (`media_player.{group_name}`) alongside the
+per-zone players, which remain independently controllable.
+
 ## Usage
 
 ### Media Player Controls

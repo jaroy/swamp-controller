@@ -92,3 +92,19 @@ targets:
         zone: 4
       - unit: 5 # Expander 2
         zone: 5
+
+# Optional virtual "group" media players: one source + one master volume slider
+# fanned out to several member targets, each with its own volume `scale` (a gain
+# multiplier, master × scale, clamped 0-100) so rooms with different speaker
+# sensitivities stay balanced under one slider. The master slider tracks the last
+# commanded group level; it doesn't chase per-zone tweaks made outside the group.
+groups:
+  - id: main-house
+    name: Main House
+    default-volume: 50  # optional; master level applied when the group powers on
+    members:
+      - target: great-room     # scale defaults to 1.0
+      - target: kitchen
+        scale: 0.6             # hotter speakers → damp to 60% of master
+      - target: loggia
+        scale: 0.85

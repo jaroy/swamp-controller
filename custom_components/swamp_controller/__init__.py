@@ -19,6 +19,7 @@ from swamp.protocol.swamp_protocol import SwampProtocol
 from swamp.network.tcp_server import SwampTcpServer
 
 from .const import CONF_CONFIG_FILE, CONF_PORT, DEFAULT_ZONE_VOLUME, DOMAIN
+from .group import parse_groups
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -79,6 +80,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     }
     _LOGGER.debug("Source upstream players (swamp_source_id -> entity): %s", source_upstream_players)
 
+    # Optional `groups:` section: virtual media players that fan a single source +
+    # master volume out to several member targets, each with its own volume `scale`.
+    # (Also ConfigManager-ignored, so parsed from the raw YAML.)
+    try:
+        zone_groups = parse_groups(raw.get("groups", []))
+    except ValueError as err:
+        raise ConfigEntryNotReady(f"Invalid 'groups' config: {err}") from err
+    _LOGGER.debug("Zone groups: %s", [g.id for g in zone_groups])
+
     # Create core components
     protocol = SwampProtocol()
     state_manager = StateManager(config)
@@ -94,6 +104,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "zone_default_volume": global_default_volume,
         "zone_default_volumes": target_default_volumes,
         "source_upstream_players": source_upstream_players,
+        "zone_groups": zone_groups,
         "server_task": None,
     }
 

@@ -23,6 +23,11 @@ from homeassistant.helpers.event import async_track_state_change_event
 from swamp.models.state import ZoneState
 
 from .const import DOMAIN
+from .group import (
+    ZoneGroup,
+    derive_master_from_member,
+    scale_member_volume,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -31,7 +36,7 @@ _LOGGER = logging.getLogger(__name__)
 VOLUME_RAMP_SECONDS = 2.0
 VOLUME_RAMP_STEPS = 20
 
-# Features the zone gains when it's routed to a source that has an upstream player to
+# Features an entity gains when it's routed to a source that has an upstream player to
 # proxy (e.g. Music Assistant): transport controls forwarded to that player.
 UPSTREAM_FEATURES = (
     MediaPlayerEntityFeature.PLAY
@@ -54,9 +59,10 @@ async def async_setup_entry(
     global_default = data["zone_default_volume"]
     per_target = data["zone_default_volumes"]
     upstream_players = data["source_upstream_players"]
+    zone_groups = data.get("zone_groups", [])
 
     # Create a media player entity for each target
-    entities = []
+    entities: list[MediaPlayerEntity] = []
     for target in config.targets:
         entities.append(
             SwampMediaPlayer(
@@ -68,11 +74,183 @@ async def async_setup_entry(
             )
         )
 
+    # Create a virtual group media player for each configured group.
+    for group in zone_groups:
+        entities.append(
+            SwampGroupMediaPlayer(
+                controller,
+                group,
+                config_entry,
+                default_volume=group.default_volume
+                if group.default_volume is not None
+                else global_default,
+                upstream_players=upstream_players,
+            )
+        )
+
     async_add_entities(entities, True)
-    _LOGGER.info("Added %d SWAMP media player entities", len(entities))
+    _LOGGER.info(
+        "Added %d SWAMP media player entities (%d zones, %d groups)",
+        len(entities),
+        len(config.targets),
+        len(zone_groups),
+    )
 
 
-class SwampMediaPlayer(MediaPlayerEntity):
+class _UpstreamProxyMixin:
+    """Shared logic for mirroring an upstream media_player onto a SWAMP entity.
+
+    A SWAMP entity (a single zone or a group) that is routed to a source backed by
+    an upstream HA media_player (e.g. Music Assistant) proxies that player's
+    transport state, now-playing metadata, album art, and playback controls.
+
+    Subclasses must provide:
+      * ``self._upstream_players``: dict of swamp_source_id -> entity_id
+      * ``self._upstream_entity_id()``: the upstream entity for the entity's
+        *current* source, or None when there isn't one.
+    """
+
+    _upstream_players: dict[int, str]
+    _unsub_upstream = None
+
+    def _upstream_entity_id(self) -> str | None:  # pragma: no cover - overridden
+        raise NotImplementedError
+
+    def _upstream_state(self):
+        """State object of the current source's upstream player, if available."""
+        entity_id = self._upstream_entity_id()
+        if not entity_id or self.hass is None:
+            return None
+        state = self.hass.states.get(entity_id)
+        if state is None or state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
+            return None
+        return state
+
+    def _upstream_attr(self, attr: str):
+        """Read an attribute from the current source's upstream player."""
+        state = self._upstream_state()
+        return state.attributes.get(attr) if state else None
+
+    @property
+    def media_title(self) -> str | None:
+        """Title of currently playing media (from the upstream player)."""
+        return self._upstream_attr("media_title")
+
+    @property
+    def media_artist(self) -> str | None:
+        """Artist of currently playing media (from the upstream player)."""
+        return self._upstream_attr("media_artist")
+
+    @property
+    def media_album_name(self) -> str | None:
+        """Album of currently playing media (from the upstream player)."""
+        return self._upstream_attr("media_album_name")
+
+    @property
+    def media_album_artist(self) -> str | None:
+        """Album artist of currently playing media (from the upstream player)."""
+        return self._upstream_attr("media_album_artist")
+
+    @property
+    def media_track(self) -> int | None:
+        """Track number of currently playing media (from the upstream player)."""
+        return self._upstream_attr("media_track")
+
+    @property
+    def media_content_id(self) -> str | None:
+        """Content ID of currently playing media (from the upstream player)."""
+        return self._upstream_attr("media_content_id")
+
+    @property
+    def media_content_type(self) -> str | None:
+        """Content type of currently playing media (from the upstream player)."""
+        return self._upstream_attr("media_content_type")
+
+    @property
+    def media_duration(self) -> int | None:
+        """Duration of currently playing media in seconds (from the upstream player)."""
+        return self._upstream_attr("media_duration")
+
+    @property
+    def media_position(self) -> int | None:
+        """Position of currently playing media in seconds (from the upstream player)."""
+        return self._upstream_attr("media_position")
+
+    @property
+    def media_position_updated_at(self):
+        """When the media position was last updated (from the upstream player)."""
+        return self._upstream_attr("media_position_updated_at")
+
+    @property
+    def entity_picture(self) -> str | None:
+        """Album art, proxied from the upstream player when present."""
+        picture = self._upstream_attr("entity_picture")
+        if picture:
+            return picture
+        return super().entity_picture
+
+    def _subscribe_upstream(self) -> None:
+        """Subscribe to upstream players; repaint when the current one changes."""
+        entity_ids = list(set(self._upstream_players.values()))
+        if not entity_ids:
+            return
+
+        @callback
+        def _upstream_changed(event: Event) -> None:
+            # Only repaint when the change is for the source we're on right now.
+            if event.data.get("entity_id") == self._upstream_entity_id():
+                self.async_write_ha_state()
+
+        self._unsub_upstream = async_track_state_change_event(
+            self.hass, entity_ids, _upstream_changed
+        )
+
+    def _unsubscribe_upstream(self) -> None:
+        """Drop the upstream subscription, if any."""
+        if self._unsub_upstream is not None:
+            self._unsub_upstream()
+            self._unsub_upstream = None
+
+    async def _forward_to_upstream(self, service: str) -> None:
+        """Forward a transport command to the current source's upstream player."""
+        entity_id = self._upstream_entity_id()
+        if entity_id is None:
+            _LOGGER.debug(
+                "%s: no upstream player for current source; ignoring %s",
+                self.entity_id,
+                service,
+            )
+            return
+        _LOGGER.debug("[proxy] %s forwarding %s -> %s", self.entity_id, service, entity_id)
+        await self.hass.services.async_call(
+            "media_player",
+            service,
+            {"entity_id": entity_id},
+            blocking=True,
+        )
+
+    async def async_media_play(self) -> None:
+        """Send play to the upstream player."""
+        await self._forward_to_upstream("media_play")
+
+    async def async_media_pause(self) -> None:
+        """Send pause to the upstream player."""
+        await self._forward_to_upstream("media_pause")
+
+    async def async_media_stop(self) -> None:
+        """Send stop to the upstream player."""
+        await self._forward_to_upstream("media_stop")
+
+    async def async_media_next_track(self) -> None:
+        """Skip to the next track on the upstream player."""
+        await self._forward_to_upstream("media_next_track")
+
+    async def async_media_previous_track(self) -> None:
+        """Skip to the previous track on the upstream player."""
+        await self._forward_to_upstream("media_previous_track")
+
+
+class SwampMediaPlayer(_UpstreamProxyMixin, MediaPlayerEntity):
     """Representation of a SWAMP target as a media player."""
 
     _attr_has_entity_name = True
@@ -150,21 +328,6 @@ class SwampMediaPlayer(MediaPlayerEntity):
             return None
         return self._upstream_players.get(zone.source_id)
 
-    def _upstream_state(self):
-        """State object of the current source's upstream player, if available."""
-        entity_id = self._upstream_entity_id()
-        if not entity_id or self.hass is None:
-            return None
-        state = self.hass.states.get(entity_id)
-        if state is None or state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
-            return None
-        return state
-
-    def _upstream_attr(self, attr: str):
-        """Read an attribute from the current source's upstream player."""
-        state = self._upstream_state()
-        return state.attributes.get(attr) if state else None
-
     @property
     def state(self) -> MediaPlayerState:
         """Return the state of the device."""
@@ -219,64 +382,6 @@ class SwampMediaPlayer(MediaPlayerEntity):
         if self._upstream_entity_id() is not None:
             features |= UPSTREAM_FEATURES
         return features
-
-    @property
-    def media_title(self) -> str | None:
-        """Title of currently playing media (from the upstream player)."""
-        return self._upstream_attr("media_title")
-
-    @property
-    def media_artist(self) -> str | None:
-        """Artist of currently playing media (from the upstream player)."""
-        return self._upstream_attr("media_artist")
-
-    @property
-    def media_album_name(self) -> str | None:
-        """Album of currently playing media (from the upstream player)."""
-        return self._upstream_attr("media_album_name")
-
-    @property
-    def media_album_artist(self) -> str | None:
-        """Album artist of currently playing media (from the upstream player)."""
-        return self._upstream_attr("media_album_artist")
-
-    @property
-    def media_track(self) -> int | None:
-        """Track number of currently playing media (from the upstream player)."""
-        return self._upstream_attr("media_track")
-
-    @property
-    def media_content_id(self) -> str | None:
-        """Content ID of currently playing media (from the upstream player)."""
-        return self._upstream_attr("media_content_id")
-
-    @property
-    def media_content_type(self) -> str | None:
-        """Content type of currently playing media (from the upstream player)."""
-        return self._upstream_attr("media_content_type")
-
-    @property
-    def media_duration(self) -> int | None:
-        """Duration of currently playing media in seconds (from the upstream player)."""
-        return self._upstream_attr("media_duration")
-
-    @property
-    def media_position(self) -> int | None:
-        """Position of currently playing media in seconds (from the upstream player)."""
-        return self._upstream_attr("media_position")
-
-    @property
-    def media_position_updated_at(self):
-        """When the media position was last updated (from the upstream player)."""
-        return self._upstream_attr("media_position_updated_at")
-
-    @property
-    def entity_picture(self) -> str | None:
-        """Album art for the zone, proxied from the upstream player when present."""
-        picture = self._upstream_attr("entity_picture")
-        if picture:
-            return picture
-        return super().entity_picture
 
     @property
     def available(self) -> bool:
@@ -355,64 +460,12 @@ class SwampMediaPlayer(MediaPlayerEntity):
     async def async_added_to_hass(self) -> None:
         """Subscribe to the upstream players so the zone updates the moment they do."""
         await super().async_added_to_hass()
-        entity_ids = list(set(self._upstream_players.values()))
-        if not entity_ids:
-            return
-
-        @callback
-        def _upstream_changed(event: Event) -> None:
-            # Only repaint when the change is for the source this zone is on right now.
-            if event.data.get("entity_id") == self._upstream_entity_id():
-                self.async_write_ha_state()
-
-        self._unsub_upstream = async_track_state_change_event(
-            self.hass, entity_ids, _upstream_changed
-        )
+        self._subscribe_upstream()
 
     async def async_will_remove_from_hass(self) -> None:
         """Cancel any in-progress ramp and unsubscribe when the entity goes away."""
         self._cancel_ramp()
-        if self._unsub_upstream is not None:
-            self._unsub_upstream()
-            self._unsub_upstream = None
-
-    async def _forward_to_upstream(self, service: str) -> None:
-        """Forward a transport command to the current source's upstream player."""
-        entity_id = self._upstream_entity_id()
-        if entity_id is None:
-            _LOGGER.debug(
-                "%s: no upstream player for current source; ignoring %s",
-                self._target.id,
-                service,
-            )
-            return
-        _LOGGER.debug("[proxy] %s forwarding %s -> %s", self._target.id, service, entity_id)
-        await self.hass.services.async_call(
-            "media_player",
-            service,
-            {"entity_id": entity_id},
-            blocking=True,
-        )
-
-    async def async_media_play(self) -> None:
-        """Send play to the upstream player."""
-        await self._forward_to_upstream("media_play")
-
-    async def async_media_pause(self) -> None:
-        """Send pause to the upstream player."""
-        await self._forward_to_upstream("media_pause")
-
-    async def async_media_stop(self) -> None:
-        """Send stop to the upstream player."""
-        await self._forward_to_upstream("media_stop")
-
-    async def async_media_next_track(self) -> None:
-        """Skip to the next track on the upstream player."""
-        await self._forward_to_upstream("media_next_track")
-
-    async def async_media_previous_track(self) -> None:
-        """Skip to the previous track on the upstream player."""
-        await self._forward_to_upstream("media_previous_track")
+        self._unsubscribe_upstream()
 
     async def async_volume_up(self) -> None:
         """Volume up the media player."""
@@ -450,4 +503,252 @@ class SwampMediaPlayer(MediaPlayerEntity):
         """Update the entity state."""
         # State is read directly from state_manager which is updated by the TCP server
         # No need to do anything here, just trigger a state update
+        pass
+
+
+class SwampGroupMediaPlayer(_UpstreamProxyMixin, MediaPlayerEntity):
+    """A virtual media player that controls several SWAMP zones as one.
+
+    Source selection and power fan out to every member. The single master volume
+    (0..1) maps to each member's level through that member's ``scale``, so rooms
+    with different speaker sensitivities stay balanced under one slider.
+
+    The master slider tracks the last *commanded* group level (seeded from the
+    first member at startup) and deliberately does not chase individual per-zone
+    volume tweaks made outside the group.
+    """
+
+    _attr_has_entity_name = True
+    _attr_should_poll = True
+
+    def __init__(
+        self,
+        controller,
+        group: ZoneGroup,
+        config_entry: ConfigEntry,
+        default_volume: int,
+        upstream_players: dict[int, str] | None = None,
+    ) -> None:
+        """Initialize the SWAMP group media player."""
+        self._controller = controller
+        self._group = group
+        self._config_entry = config_entry
+        self._default_volume = default_volume
+        self._ramp_task: asyncio.Task | None = None
+        self._upstream_players = upstream_players or {}
+        self._unsub_upstream = None
+        # Commanded master level (0-100); None until seeded from a member.
+        self._master_level: int | None = None
+
+        self._attr_unique_id = f"{config_entry.entry_id}_group_{group.id}"
+        self._attr_name = group.name
+
+        self._source_list = [source.name for source in controller.config.sources]
+        self._source_id_map = {
+            source.name: source.id for source in controller.config.sources
+        }
+        self._swamp_source_to_name = {
+            source.swamp_source_id: source.name
+            for source in controller.config.sources
+        }
+        self._attr_source_list = self._source_list
+
+        self._base_features = (
+            MediaPlayerEntityFeature.VOLUME_SET
+            | MediaPlayerEntityFeature.VOLUME_STEP
+            | MediaPlayerEntityFeature.TURN_ON
+            | MediaPlayerEntityFeature.TURN_OFF
+            | MediaPlayerEntityFeature.SELECT_SOURCE
+        )
+
+    @property
+    def device_info(self):
+        """Return device information about this SWAMP zone group."""
+        return {
+            "identifiers": {(DOMAIN, f"{self._config_entry.entry_id}_group_{self._group.id}")},
+            "name": self._group.name,
+            "manufacturer": "Crestron",
+            "model": "SWAMP Zone Group",
+            "via_device": (DOMAIN, self._config_entry.entry_id),
+        }
+
+    def _member_zone(self, target_id: str) -> ZoneState | None:
+        """Primary (first) zone for a member target."""
+        zones = self._controller.state.get_zones_for_target(target_id)
+        return zones[0] if zones else None
+
+    def _active_source_id(self) -> int | None:
+        """swamp_source_id the group is currently on (first member with a source)."""
+        for member in self._group.members:
+            zone = self._member_zone(member.target_id)
+            if zone and zone.source_id not in (None, 0):
+                return zone.source_id
+        return None
+
+    def _seed_master(self) -> int:
+        """Seed the master (0-100) from the first member's current level."""
+        if not self._group.members:
+            return 0
+        member = self._group.members[0]
+        zone = self._member_zone(member.target_id)
+        if zone is None:
+            return 0
+        return derive_master_from_member(zone.volume, member.scale)
+
+    def _upstream_entity_id(self) -> str | None:
+        """Entity_id of the upstream player for the group's current source, if any."""
+        source_id = self._active_source_id()
+        if source_id is None:
+            return None
+        return self._upstream_players.get(source_id)
+
+    @property
+    def state(self) -> MediaPlayerState:
+        """Return the state of the group (on if any member has a source)."""
+        if not self._controller.state.state.connected:
+            return MediaPlayerState.OFF
+        if self._active_source_id() is None:
+            return MediaPlayerState.OFF
+
+        # On a proxied source, mirror the upstream player's transport state.
+        upstream = self._upstream_state()
+        if upstream is not None and upstream.state != STATE_OFF:
+            try:
+                return MediaPlayerState(upstream.state)
+            except ValueError:
+                return MediaPlayerState.ON
+
+        return MediaPlayerState.ON
+
+    @property
+    def volume_level(self) -> float | None:
+        """Master volume (0..1); the commanded group level."""
+        if self._master_level is None:
+            self._master_level = self._seed_master()
+        return self._master_level / 100.0
+
+    @property
+    def source(self) -> str | None:
+        """Return the group's current input source."""
+        source_id = self._active_source_id()
+        if source_id is None:
+            return None
+        return self._swamp_source_to_name.get(source_id)
+
+    @property
+    def supported_features(self) -> MediaPlayerEntityFeature:
+        """Return supported features, adding transport controls on a proxied source."""
+        features = self._base_features
+        if self._upstream_entity_id() is not None:
+            features |= UPSTREAM_FEATURES
+        return features
+
+    @property
+    def available(self) -> bool:
+        """Return True if entity is available."""
+        return self._controller.state.state.connected
+
+    async def _set_all_members(self, master_percent: int) -> None:
+        """Apply a master level to every member, each scaled by its own factor."""
+        for member in self._group.members:
+            level = scale_member_volume(master_percent, member.scale)
+            await self._controller.set_volume(member.target_id, level)
+
+    async def async_set_volume_level(self, volume: float) -> None:
+        """Set master volume, range 0..1, fanning scaled levels to members."""
+        self._cancel_ramp()  # a manual volume change cancels an in-progress ramp
+        master = int(round(volume * 100))
+        self._master_level = master
+        await self._set_all_members(master)
+        self.async_write_ha_state()
+
+    async def async_volume_up(self) -> None:
+        """Nudge the master volume up by 5%."""
+        current = self._master_level if self._master_level is not None else self._seed_master()
+        await self.async_set_volume_level(min(100, current + 5) / 100.0)
+
+    async def async_volume_down(self) -> None:
+        """Nudge the master volume down by 5%."""
+        current = self._master_level if self._master_level is not None else self._seed_master()
+        await self.async_set_volume_level(max(0, current - 5) / 100.0)
+
+    async def async_turn_on(self) -> None:
+        """Turn the group on, routing all members to the (current or first) source."""
+        source_id = self._active_source_id()
+        if source_id is not None:
+            source_name = self._swamp_source_to_name.get(source_id)
+            source_config_id = self._source_id_map.get(source_name)
+        else:
+            source_config_id = None
+        if source_config_id is None:
+            source_config_id = self._controller.config.sources[0].id
+
+        for member in self._group.members:
+            await self._controller.set_power(member.target_id, True, source_config_id)
+
+        await self._begin_ramp(self._default_volume)
+
+    async def async_turn_off(self) -> None:
+        """Turn all members off."""
+        self._cancel_ramp()
+        for member in self._group.members:
+            await self._controller.set_power(member.target_id, False)
+        self.async_write_ha_state()
+
+    async def async_select_source(self, source: str) -> None:
+        """Select input source for all members (implicitly powers the group on)."""
+        if source not in self._source_id_map:
+            _LOGGER.warning("Unknown source: %s", source)
+            return
+
+        was_off = self._active_source_id() is None
+        source_id = self._source_id_map[source]
+        for member in self._group.members:
+            await self._controller.route_source_to_target(source_id, member.target_id)
+
+        if was_off:
+            await self._begin_ramp(self._default_volume)
+
+    async def _begin_ramp(self, target_master: int) -> None:
+        """Zero all members and reflect it now, then ramp the master up in background."""
+        self._master_level = 0
+        await self._set_all_members(0)
+        self.async_write_ha_state()
+        self._cancel_ramp()
+        self._ramp_task = self.hass.async_create_background_task(
+            self._ramp_volume(target_master), name=f"swamp_group_ramp_{self._group.id}"
+        )
+
+    def _cancel_ramp(self) -> None:
+        """Cancel an in-progress volume ramp, if any."""
+        if self._ramp_task is not None and not self._ramp_task.done():
+            self._ramp_task.cancel()
+        self._ramp_task = None
+
+    async def _ramp_volume(self, target_master: int) -> None:
+        """Ramp master 0 -> target over VOLUME_RAMP_SECONDS, pushing state each step."""
+        interval = VOLUME_RAMP_SECONDS / VOLUME_RAMP_STEPS
+        try:
+            for step in range(1, VOLUME_RAMP_STEPS + 1):
+                master = round(target_master * step / VOLUME_RAMP_STEPS)
+                self._master_level = master
+                await self._set_all_members(master)
+                self.async_write_ha_state()
+                if step < VOLUME_RAMP_STEPS:
+                    await asyncio.sleep(interval)
+        except asyncio.CancelledError:
+            pass
+
+    async def async_added_to_hass(self) -> None:
+        """Subscribe to the upstream players so the group updates when they do."""
+        await super().async_added_to_hass()
+        self._subscribe_upstream()
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Cancel any in-progress ramp and unsubscribe when the entity goes away."""
+        self._cancel_ramp()
+        self._unsubscribe_upstream()
+
+    async def async_update(self) -> None:
+        """State is read directly from the state manager; nothing to poll."""
         pass
