@@ -1,5 +1,8 @@
 """Pure (Home-Assistant-independent) logic for SWAMP zone groups.
 
+(Not named ``group.py``: Home Assistant treats an integration's ``group.py`` as a
+platform for its ``group`` integration.)
+
 A *zone group* is a virtual media player that fans a single source selection and a
 single "master" volume out to several member targets. Each member carries its own
 volume ``scale`` (a gain multiplier) so rooms with different speaker sensitivities

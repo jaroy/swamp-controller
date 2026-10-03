@@ -22,6 +22,12 @@ class DeviceState:
     conn_accepted_sent: bool = False
     last_message_received: datetime | None = None
     client_address: str | None = None
+    # Diagnostics (lifetime of this state object)
+    connections: int = 0  # connections accepted from the device
+    last_connected: datetime | None = None
+    last_disconnected: datetime | None = None
+    last_disconnect_reason: str | None = None
+    undecoded_messages: int = 0
 
     @property
     def connected(self) -> bool:

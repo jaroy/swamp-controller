@@ -23,7 +23,7 @@ from homeassistant.helpers.event import async_track_state_change_event
 from swamp.models.state import ZoneState
 
 from .const import DOMAIN
-from .group import (
+from .zone_group import (
     ZoneGroup,
     derive_master_from_member,
     scale_member_volume,

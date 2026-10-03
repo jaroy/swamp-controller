@@ -1,6 +1,6 @@
 """Tests for zone-group parsing and volume scaling (HA-independent logic).
 
-`group.py` lives under `custom_components/` and imports nothing from Home
+`zone_group.py` lives under `custom_components/` and imports nothing from Home
 Assistant, so we load it directly by file path — importing it as a package would
 pull in the HA-dependent package __init__.
 """
@@ -14,7 +14,7 @@ _GROUP_PATH = (
     Path(__file__).resolve().parent.parent
     / "custom_components"
     / "swamp_controller"
-    / "group.py"
+    / "zone_group.py"
 )
 _spec = importlib.util.spec_from_file_location("swamp_group_under_test", _GROUP_PATH)
 group = importlib.util.module_from_spec(_spec)

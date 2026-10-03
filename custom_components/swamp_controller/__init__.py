@@ -11,6 +11,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.helpers import device_registry as dr
 
 from swamp.core.config_manager import ConfigManager
 from swamp.core.state_manager import StateManager
@@ -19,11 +20,11 @@ from swamp.protocol.swamp_protocol import SwampProtocol
 from swamp.network.tcp_server import SwampTcpServer
 
 from .const import CONF_CONFIG_FILE, CONF_PORT, DEFAULT_ZONE_VOLUME, DOMAIN
-from .group import parse_groups
+from .zone_group import parse_groups
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[Platform] = [Platform.MEDIA_PLAYER]
+PLATFORMS: list[Platform] = [Platform.BUTTON, Platform.MEDIA_PLAYER, Platform.SENSOR]
 
 
 def _load_raw_yaml(path: Path) -> dict:
@@ -43,7 +44,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     try:
         # Load configuration
-        config = ConfigManager.load(config_file)
+        config = await hass.async_add_executor_job(ConfigManager.load, config_file)
         _LOGGER.info(
             "Loaded config: %d sources, %d targets",
             len(config.sources),
@@ -95,6 +96,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     tcp_server = SwampTcpServer(port, protocol, state_manager)
     controller = SwampController(config, tcp_server, state_manager)
 
+    # Hub device: parent of the zone/group devices, and home of the diagnostic
+    # sensors and the hard-restart button.
+    dr.async_get(hass).async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={(DOMAIN, entry.entry_id)},
+        name="SWAMP Controller",
+        manufacturer="Crestron",
+        model="SWAMP",
+    )
+
     # Store controller and components in hass.data
     hass.data[DOMAIN][entry.entry_id] = {
         "controller": controller,
@@ -128,37 +139,44 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
     if unload_ok:
-        # Stop the TCP server
-        data = hass.data[DOMAIN][entry.entry_id]
-        tcp_server = data["tcp_server"]
-        server_task = data["server_task"]
-
-        # Close any active client connections
-        if tcp_server.client_writer and not tcp_server.client_writer.is_closing():
-            try:
-                tcp_server.client_writer.close()
-                await asyncio.wait_for(
-                    tcp_server.client_writer.wait_closed(),
-                    timeout=1.0,
-                )
-            except asyncio.TimeoutError:
-                _LOGGER.warning("Timeout waiting for client connection to close")
-            except Exception as err:
-                _LOGGER.debug("Error closing client connection: %s", err)
-
-        # Cancel server task
-        if server_task:
-            server_task.cancel()
-            try:
-                await asyncio.wait_for(server_task, timeout=2.0)
-            except asyncio.CancelledError:
-                _LOGGER.debug("Server task cancelled successfully")
-            except asyncio.TimeoutError:
-                _LOGGER.warning("Timeout waiting for server to close")
-            except Exception as err:
-                _LOGGER.debug("Error during server shutdown: %s", err)
-
-        # Remove data
-        hass.data[DOMAIN].pop(entry.entry_id)
+        data = hass.data[DOMAIN].pop(entry.entry_id)
+        await _async_stop_server(data)
 
     return unload_ok
+
+
+async def _async_stop_server(data: dict) -> None:
+    """Stop listening and forcibly drop every device connection.
+
+    Aborting (rather than gracefully closing) every connection - not just the
+    current one - is what makes the device notice and reconnect.
+    """
+    tcp_server = data["tcp_server"]
+    server_task = data["server_task"]
+
+    await tcp_server.stop()
+
+    if server_task:
+        server_task.cancel()
+        try:
+            await asyncio.wait_for(server_task, timeout=2.0)
+        except asyncio.CancelledError:
+            _LOGGER.debug("Server task cancelled successfully")
+        except asyncio.TimeoutError:
+            _LOGGER.warning("Timeout waiting for server to close")
+        except Exception as err:
+            _LOGGER.debug("Error during server shutdown: %s", err)
+
+
+async def async_hard_restart(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Tear the integration down to nothing and set it up again from scratch.
+
+    Drops every device connection and the listening socket first, so nothing of
+    the old instance survives even if the unload misbehaves, then reloads the
+    entry: new config, state, TCP server and entities.
+    """
+    _LOGGER.warning("Hard restart requested for SWAMP Controller")
+    data = hass.data.get(DOMAIN, {}).get(entry.entry_id)
+    if data is not None:
+        await _async_stop_server(data)
+    hass.config_entries.async_schedule_reload(entry.entry_id)

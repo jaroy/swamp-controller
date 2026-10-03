@@ -18,6 +18,8 @@ The SWAMP Controller integration exposes your Crestron SWAMP multi-zone audio sy
 - Source selection from all configured audio sources
 - Power on/off control
 - Device availability tracking (shows offline when device disconnects)
+- Automatic recovery from stale connections (see [Connection Diagnostics](#connection-diagnostics))
+- Diagnostic sensors and a **Hard restart** button on the *SWAMP Controller* hub device
 
 ## Installation
 
@@ -265,9 +267,37 @@ The SWAMP device can only connect to one controller at a time, so ensure only on
 - **Unavailable**: No connection or no data received in 30+ seconds
 
 Check:
-1. Network connectivity between SWAMP device and Home Assistant
-2. TCP server is running (check logs)
+1. The **Connection status** sensor on the *SWAMP Controller* device (see below)
+2. Network connectivity between SWAMP device and Home Assistant
 3. SWAMP device is powered on and configured correctly
+
+If it stays stuck, press **Hard restart** on the *SWAMP Controller* device.
+
+### Connection Diagnostics
+
+The SWAMP connects *to* Home Assistant and only reconnects when it sees that
+connection close. The integration therefore drops the connection itself when it
+goes bad, so the device reconnects:
+
+- **Stale**: nothing received for 60 seconds (we PING every 10s and the device answers)
+- **No sign-on**: connected but never completed the handshake within 60 seconds
+- **Replaced**: the device opened a new connection, so the old one is dead
+
+The *SWAMP Controller* hub device has diagnostic sensors for this:
+
+| Sensor | Meaning |
+| --- | --- |
+| Connection status | `connected`, `signing_on`, `waiting_for_device`, `stale`, or `server_down` |
+| Device address | Address of the connected SWAMP |
+| Last message received | When anything was last received from the device |
+| Last connected / Last disconnected | When the current connection started / the last one ended |
+| Last disconnect reason | e.g. `stale: no data for 60s`, `replaced by new connection`, `closed by device` |
+| Connections since restart | Connections accepted since the integration was (re)started |
+| Undecoded messages | Messages from the device the integration doesn't understand |
+
+The **Hard restart** button force-closes every device connection and the listening
+socket, then sets the integration up again from scratch (new state, server, and
+entities). The device reconnects within a few seconds. Counters reset.
 
 ### Volume/Source Not Updating
 
