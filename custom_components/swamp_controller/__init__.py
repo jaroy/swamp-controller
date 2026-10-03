@@ -9,9 +9,10 @@ import yaml
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 
 from swamp.core.config_manager import ConfigManager
 from swamp.core.state_manager import StateManager
@@ -19,7 +20,13 @@ from swamp.core.controller import SwampController
 from swamp.protocol.swamp_protocol import SwampProtocol
 from swamp.network.tcp_server import SwampTcpServer
 
-from .const import CONF_CONFIG_FILE, CONF_PORT, DEFAULT_ZONE_VOLUME, DOMAIN
+from .const import (
+    CONF_CONFIG_FILE,
+    CONF_PORT,
+    DEFAULT_ZONE_VOLUME,
+    DOMAIN,
+    signal_state_updated,
+)
 from .zone_group import parse_groups
 
 _LOGGER = logging.getLogger(__name__)
@@ -119,6 +126,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "server_task": None,
     }
 
+    # Push state changes (device updates, our own commands, connection changes) to
+    # every entity instead of waiting for the next poll. A group fan-out or volume
+    # ramp changes many zones at once, so coalesce each burst into one update.
+    entry.async_on_unload(
+        state_manager.add_listener(_coalesced_state_signal(hass, entry.entry_id))
+    )
+
     # Start TCP server
     server_task = asyncio.create_task(tcp_server.start())
     hass.data[DOMAIN][entry.entry_id]["server_task"] = server_task
@@ -129,6 +143,26 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     return True
+
+
+def _coalesced_state_signal(hass: HomeAssistant, entry_id: str):
+    """State listener that sends at most one update signal per event-loop pass."""
+    signal = signal_state_updated(entry_id)
+    pending = False
+
+    def _send() -> None:
+        nonlocal pending
+        pending = False
+        async_dispatcher_send(hass, signal)
+
+    @callback
+    def _state_changed() -> None:
+        nonlocal pending
+        if not pending:
+            pending = True
+            hass.loop.call_soon(_send)
+
+    return _state_changed
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

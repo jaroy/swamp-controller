@@ -15,6 +15,13 @@ DEFAULT_CONFIG_FILE = "/config/swamp_config.yaml"
 # on a target) in the config file.
 DEFAULT_ZONE_VOLUME = 40
 
+
+
+def signal_state_updated(entry_id: str) -> str:
+    """Dispatcher signal sent when a config entry's SWAMP state changes."""
+    return f"{DOMAIN}_{entry_id}_state_updated"
+
+
 # Services
 SERVICE_ROUTE_SOURCE = "route_source"
 

@@ -14,14 +14,16 @@ from homeassistant.components.sensor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from swamp.models.state import DeviceState
 from swamp.network.tcp_server import SwampTcpServer
 
-from .const import DOMAIN
+from .const import DOMAIN, signal_state_updated
 
-# Connection state lives in plain Python objects with no change callbacks; poll it.
+# Changes are pushed, but "stale" and "last message received" move without any event;
+# poll for those.
 SCAN_INTERVAL = timedelta(seconds=10)
 
 CONNECTION_STATUSES = [
@@ -139,8 +141,17 @@ class SwampDiagnosticSensor(SensorEntity):
         self.entity_description = description
         self._server = server
         self._state = state
+        self._entry_id = config_entry.entry_id
         self._attr_unique_id = f"{config_entry.entry_id}_{description.key}"
         self._attr_device_info = {"identifiers": {(DOMAIN, config_entry.entry_id)}}
+
+    async def async_added_to_hass(self) -> None:
+        """Update as soon as the connection state changes."""
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass, signal_state_updated(self._entry_id), self.async_write_ha_state
+            )
+        )
 
     @property
     def native_value(self) -> Any:

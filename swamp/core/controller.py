@@ -27,6 +27,7 @@ class SwampController:
             await self.tcp.send_command(command_bytes)
 
             zone_state.source_id = source.swamp_source_id
+            self.state.notify()
 
     async def set_volume(self, target_id: str, level: int) -> None:
         """Set volume for target"""
@@ -41,6 +42,7 @@ class SwampController:
             await self.tcp.send_command(command_bytes)
 
             zone_state.volume = level
+            self.state.notify()
 
     async def set_power(self, target_id: str, power_on: bool, source_id: str | None = None) -> None:
         """Set power for target (really just routes source to zone)
@@ -65,6 +67,7 @@ class SwampController:
                 await self.tcp.send_command(command_bytes)
                 zone_state.power = True
                 zone_state.source_id = swamp_source_id
+                self.state.notify()
         else:
             # Power off = route source 0 (no source) to zone
             logger.info(f"Powering off {target_id} ({len(zones)} zones)")
@@ -76,6 +79,7 @@ class SwampController:
                 await self.tcp.send_command(command_bytes)
                 zone_state.power = False
                 zone_state.source_id = None
+                self.state.notify()
 
     async def send_whois(self) -> None:
         """Send WHOIS request to connected device"""

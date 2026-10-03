@@ -163,6 +163,7 @@ class SwampTcpServer:
         state.last_connected = datetime.now()
         state.connections += 1
         self.magic_packets_sent = False  # Reset for new connection
+        self.state_manager.notify()
 
         # Send WHOIS automatically on connection
         try:
@@ -225,6 +226,7 @@ class SwampTcpServer:
                 state.last_disconnect_reason = reason
                 self.client_writer = None
                 self.client_address = None
+                self.state_manager.notify()
             logger.info(f'SWAMP connection from {address} ended: {reason}')
 
             writer.transport.abort()
@@ -269,6 +271,7 @@ class SwampTcpServer:
                     await self._write(writer, conn_accepted_bytes)
                     if self.client_writer is writer:
                         state.conn_accepted_sent = True
+                        self.state_manager.notify()
                     logger.info('Sent CONN_ACCEPTED - connection established')
 
                     # Send JOIN UPDATE 100ms later

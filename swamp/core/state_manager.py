@@ -1,6 +1,11 @@
+import logging
+from collections.abc import Callable
 from datetime import datetime
 from ..models.config import AppConfig, Source
 from ..models.state import DeviceState, ZoneState
+
+
+logger = logging.getLogger(__name__)
 
 
 class StateManager:
@@ -9,7 +14,24 @@ class StateManager:
     def __init__(self, config: AppConfig):
         self.config = config
         self.state = DeviceState()
+        self._listeners: list[Callable[[], None]] = []
         self._initialize_zones()
+
+    def add_listener(self, listener: Callable[[], None]) -> Callable[[], None]:
+        """Call ``listener`` whenever zone or connection state changes.
+
+        Returns a function that removes the listener.
+        """
+        self._listeners.append(listener)
+        return lambda: self._listeners.remove(listener)
+
+    def notify(self) -> None:
+        """Tell listeners that state changed."""
+        for listener in list(self._listeners):
+            try:
+                listener()
+            except Exception:
+                logger.exception('Error in state listener')
 
     def _initialize_zones(self) -> None:
         """Create ZoneState for all configured zones"""
@@ -43,6 +65,7 @@ class StateManager:
                     zone_state.source_received = True  # Mark as having received data
                 elif register == 'volume':
                     zone_state.volume = value
+                self.notify()
 
         # Handle legacy zone_update messages
         elif msg_type == 'zone_update':
@@ -60,6 +83,7 @@ class StateManager:
                     zone_state.source_id = message['source_id']
                 if 'muted' in message:
                     zone_state.muted = message['muted']
+                self.notify()
 
     def get_zones_for_target(self, target_id: str) -> list[ZoneState]:
         """Map high-level target to SWAMP zones"""
