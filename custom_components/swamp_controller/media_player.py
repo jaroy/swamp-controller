@@ -516,6 +516,11 @@ class SwampGroupMediaPlayer(_UpstreamProxyMixin, MediaPlayerEntity):
     The master slider tracks the last *commanded* group level (seeded from the
     first member at startup) and deliberately does not chase individual per-zone
     volume tweaks made outside the group.
+
+    The group is only "on" when it was turned on through the group itself (turn
+    on / select source); a member zone being powered on individually does not
+    light up the group. It drops back to off when turned off, or once every
+    member has been switched off.
     """
 
     _attr_has_entity_name = True
@@ -539,6 +544,8 @@ class SwampGroupMediaPlayer(_UpstreamProxyMixin, MediaPlayerEntity):
         self._unsub_upstream = None
         # Commanded master level (0-100); None until seeded from a member.
         self._master_level: int | None = None
+        # Whether the group itself was turned on (vs. members powered individually).
+        self._group_on = False
 
         self._attr_unique_id = f"{config_entry.entry_id}_group_{group.id}"
         self._attr_name = group.name
@@ -595,8 +602,21 @@ class SwampGroupMediaPlayer(_UpstreamProxyMixin, MediaPlayerEntity):
             return 0
         return derive_master_from_member(zone.volume, member.scale)
 
+    def _is_on(self) -> bool:
+        """True if the group was turned on and at least one member still has a source."""
+        if not self._group_on:
+            return False
+        if self._active_source_id() is None:
+            # Every member was switched off outside the group; the group is off too,
+            # and stays off if a member is later powered on individually.
+            self._group_on = False
+            return False
+        return True
+
     def _upstream_entity_id(self) -> str | None:
         """Entity_id of the upstream player for the group's current source, if any."""
+        if not self._is_on():
+            return None
         source_id = self._active_source_id()
         if source_id is None:
             return None
@@ -604,10 +624,10 @@ class SwampGroupMediaPlayer(_UpstreamProxyMixin, MediaPlayerEntity):
 
     @property
     def state(self) -> MediaPlayerState:
-        """Return the state of the group (on if any member has a source)."""
+        """Return the state of the group (on only if turned on via the group)."""
         if not self._controller.state.state.connected:
             return MediaPlayerState.OFF
-        if self._active_source_id() is None:
+        if not self._is_on():
             return MediaPlayerState.OFF
 
         # On a proxied source, mirror the upstream player's transport state.
@@ -630,6 +650,8 @@ class SwampGroupMediaPlayer(_UpstreamProxyMixin, MediaPlayerEntity):
     @property
     def source(self) -> str | None:
         """Return the group's current input source."""
+        if not self._is_on():
+            return None
         source_id = self._active_source_id()
         if source_id is None:
             return None
@@ -685,12 +707,15 @@ class SwampGroupMediaPlayer(_UpstreamProxyMixin, MediaPlayerEntity):
 
         for member in self._group.members:
             await self._controller.set_power(member.target_id, True, source_config_id)
+        # Set after members have a source, so a state read mid-loop can't clear it.
+        self._group_on = True
 
         await self._begin_ramp(self._default_volume)
 
     async def async_turn_off(self) -> None:
         """Turn all members off."""
         self._cancel_ramp()
+        self._group_on = False
         for member in self._group.members:
             await self._controller.set_power(member.target_id, False)
         self.async_write_ha_state()
@@ -701,10 +726,11 @@ class SwampGroupMediaPlayer(_UpstreamProxyMixin, MediaPlayerEntity):
             _LOGGER.warning("Unknown source: %s", source)
             return
 
-        was_off = self._active_source_id() is None
+        was_off = not self._is_on()
         source_id = self._source_id_map[source]
         for member in self._group.members:
             await self._controller.route_source_to_target(source_id, member.target_id)
+        self._group_on = True
 
         if was_off:
             await self._begin_ramp(self._default_volume)

@@ -136,6 +136,9 @@ Behavior:
 - **Master volume** (0–100) maps to each member as `master × scale`, clamped to
   0–100. Setting the group to 50 puts Great Room at 50, Kitchen at 30, Loggia at ~43.
 - **Source select / power on / off** fan out to every member.
+- The group only shows **on** when it was turned on through the group (power on or
+  source select). Powering a member zone on by itself does not light up the group;
+  the group returns to off when turned off, or once every member has been switched off.
 - The master slider tracks the **last commanded group level** (seeded from the first
   member at startup). It intentionally does *not* chase individual per-zone volume
   changes you make on a member directly — nudging one room won't move the group slider.
